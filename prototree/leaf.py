@@ -17,6 +17,11 @@ class Leaf(Node):
                  ):
         super().__init__(index)
 
+        '''
+        ########### .M The initialization should be changed based on our goal. Since each leaf is a Gaussian distribution with mean M and 
+                                covariance matrix of Sigma, we could initialize M with 0 and Sigma with the identity.
+        ########### 
+        '''
         # Initialize the distribution parameters
         if args.disable_derivative_free_leaf_optim:
             self._dist_params = nn.Parameter(torch.randn(num_classes), requires_grad=True)
@@ -24,7 +29,9 @@ class Leaf(Node):
             self._dist_params = nn.Parameter(torch.ones(num_classes), requires_grad=False)
         else:
             self._dist_params = nn.Parameter(torch.zeros(num_classes), requires_grad=False)
+        ########### .M
 
+                     
         # Flag that indicates whether probabilities or log probabilities are computed
         self._log_probabilities = args.log_probabilities
 
@@ -48,6 +55,11 @@ class Leaf(Node):
         else:
             node_attr.setdefault((self, 'pa'), torch.zeros(batch_size, device=xs.device))
 
+        '''
+        ########### 
+                 ######.M The following part might be changed to be compatible with Gaussian.
+        ########### 
+        '''        
         # Obtain the leaf distribution
         dist = self.distribution()  # shape: (k,)
         # Reshape the distribution to a matrix with one single row
@@ -75,7 +87,10 @@ class Leaf(Node):
                 return torch.log((self._dist_params / torch.sum(self._dist_params))+1e-10) #add small epsilon for numerical stability
             else:
                 return (self._dist_params / torch.sum(self._dist_params))
-        
+     ########### .M
+
+
+    
     @property
     def requires_grad(self) -> bool:
         return self._dist_params.requires_grad
