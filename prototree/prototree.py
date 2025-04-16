@@ -49,12 +49,22 @@ class ProtoTree(nn.Module):
         self._net = feature_net
         self._add_on = add_on_layers
 
+        ###########
+        ###########
+        #### M. This might be the part we need to change
+        ###########
+        ###########
+                     
         # Flag that indicates whether probabilities or log probabilities are computed
         self._log_probabilities = args.log_probabilities
-
+                     
+        ###########
+        ###########
+                     
         # Flag that indicates whether a normalization factor should be used instead of softmax. 
         self._kontschieder_normalization = args.kontschieder_normalization
         self._kontschieder_train = args.kontschieder_train
+                     
         # Map each decision node to an output of the feature net
         self._out_map = {n: i for i, n in zip(range(2 ** (args.depth) - 1), self.branches)}
 
@@ -128,13 +138,21 @@ class ProtoTree(nn.Module):
         # Perform global min pooling to see the minimal distance for each prototype to any patch of the input image
         min_distances = min_pool2d(distances, kernel_size=(W, H))
         min_distances = min_distances.view(bs, self.num_prototypes)
-
+        '''
+        ###########
+            #### M. The following part should be changed, and instead of torch.exp(-min_distances), we should have our own
+                    formula in the Prototype Regression Tree.pdf
+        ###########
+        ''''
         if not self._log_probabilities:
             similarities = torch.exp(-min_distances)
         else:
             # Omit the exp since we require log probabilities
             similarities = -min_distances
+            
+        ########### .M
 
+                    
         # Add the conv net output to the kwargs dict to be passed to the decision nodes in the tree
         # Split (or chunk) the conv net output tensor of shape (batch_size, num_decision_nodes) into individual tensors
         # of shape (batch_size, 1) containing the logits that are relevant to single decision nodes
@@ -166,8 +184,17 @@ class ProtoTree(nn.Module):
             leaves = list(self.leaves)
             # Obtain path probabilities of arriving at each leaf
             pas = [attr[l, 'pa'].view(batch_size, 1) for l in leaves]  # All shaped (bs, 1)
+
+            '''
+            ###########
+                #### M. The following part should be changed to Gaussian by computing mean and covariance through EM.
+            ###########
+            '''
+            
             # Obtain output distributions of each leaf
             dss = [attr[l, 'ds'].view(batch_size, 1, self._num_classes) for l in leaves]  # All shaped (bs, 1, k)
+            ########### .M
+            
             # Prepare data for selection of most probable distributions
             # Let L denote the number of leaves in this tree
             pas = torch.cat(tuple(pas), dim=1)  # shape: (bs, L)
@@ -184,6 +211,14 @@ class ProtoTree(nn.Module):
             info['out_leaf_ix'] = [leaves[i.item()].index for i in ix]
 
             return dists, info
+
+     
+        '''
+        ###########
+            #### M. I think the following part is for hard tree.
+        ###########
+        '''
+                    
         if sampling_strategy == ProtoTree.SAMPLING_STRATEGIES[2]:  # Greedy
             # At every decision node, the child with highest probability will be chosen
             batch_size = xs.size(0)
@@ -214,7 +249,8 @@ class ProtoTree(nn.Module):
 
             return dists, info
         raise Exception('Sampling strategy not recognized!')
-
+            ########### .M
+    
     def forward_partial(self, xs: torch.Tensor) -> tuple:
 
         # Perform a forward pass with the conv net
@@ -270,6 +306,12 @@ class ProtoTree(nn.Module):
     def num_leaves(self) -> int:
         return self._root.num_leaves
 
+
+    '''
+    ###########
+        #### M. Change the following part so that if the directory is not available, it builds that automatically.
+    ###########
+    '''
     def save(self, directory_path: str):
         # Make sure the target directory exists
         if not os.path.isdir(directory_path):
@@ -289,11 +331,13 @@ class ProtoTree(nn.Module):
         with open(directory_path + '/tree.pkl', 'wb') as f:
             pickle.dump(self, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-        
+    
     @staticmethod
     def load(directory_path: str):
         return torch.load(directory_path + '/model.pth')      
-       
+    ########### .M
+
+    
     def _init_tree(self,
                    num_classes,
                    args: argparse.Namespace) -> Node:
