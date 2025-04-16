@@ -57,14 +57,23 @@ def train_epoch(tree: ProtoTree,
         # Perform a forward pass through the network
         ys_pred, info = tree.forward(xs)
 
+      
         # Learn prototypes and network with gradient descent. 
         # If disable_derivative_free_leaf_optim, leaves are optimized with gradient descent as well.
+
+        '''        
+        ###########
+              ###### .M The loss should be changed to MSE.
+        ########### 
+        ''' 
         # Compute the loss
         if tree._log_probabilities:
             loss = F.nll_loss(ys_pred, ys)
         else:
             loss = F.nll_loss(torch.log(ys_pred), ys)
-        
+        ###########  .M
+
+      
         # Compute the gradient
         loss.backward()
         # Update model parameters
@@ -76,6 +85,12 @@ def train_epoch(tree: ProtoTree,
             tree.eval()
             with torch.no_grad():
                 target = eye[ys] #shape (batchsize, num_classes) 
+  
+               '''
+               ########### 
+                     ####### .M Here the update is C_t in the algrithm which should be changed as we aim to update mean and covariance matrices.
+               ###########   
+               '''
                 for leaf in tree.leaves:  
                     if tree._log_probabilities:
                         # log version
@@ -85,7 +100,10 @@ def train_epoch(tree: ProtoTree,
                     leaf._dist_params -= (_old_dist_params[leaf]/nr_batches)
                     F.relu_(leaf._dist_params) #dist_params values can get slightly negative because of floating point issues. therefore, set to zero.
                     leaf._dist_params += update
+               ###########  .M
 
+                  
+         ########### .M We have no counting in Regression.
         # Count the number of correct classifications
         ys_pred_max = torch.argmax(ys_pred, dim=1)
         
