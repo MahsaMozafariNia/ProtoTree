@@ -6,6 +6,7 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from prototree.branch import Branch
 from prototree.leaf import Leaf
@@ -62,6 +63,12 @@ class ProtoTree(nn.Module):
                                         self.num_features,
                                         args.W1,
                                         args.H1)
+
+        # Gaussian-regression-tree style similarity: a per-prototype learnable margin and a
+        # temperature that together turn a min-distance into a "go right" probability.
+        self.epsilon = 1e-3
+        self.prototype_margin = nn.Parameter(torch.ones(self.num_prototypes))
+        self.prototype_temp = getattr(args, 'prototype_temp', 1.0)
 
     @property
     def root(self) -> Node:
@@ -129,11 +136,20 @@ class ProtoTree(nn.Module):
         min_distances = min_pool2d(distances, kernel_size=(W, H))
         min_distances = min_distances.view(bs, self.num_prototypes)
 
+        # Gaussian-regression-tree similarity: instead of a plain exp(-distance), compare the
+        # min-distance to a learnable per-prototype margin, scaled by a temperature, and squash
+        # with a sigmoid to get the probability of routing right at this prototype's branch.
+        delta = self.prototype_margin.view(1, -1)  # (1, num_prototypes)
+        delta_min = 1e-4
+        margin = F.relu(delta - delta_min) + delta_min
+        logits = -(min_distances - margin) / (self.prototype_temp + 1e-6)
+
         if not self._log_probabilities:
-            similarities = torch.exp(-min_distances)
+            similarities = torch.sigmoid(logits)
+            similarities = torch.clamp(similarities, min=self.epsilon, max=1 - self.epsilon)
         else:
-            # Omit the exp since we require log probabilities
-            similarities = -min_distances
+            # Numerically stable log(sigmoid(x)) = -softplus(-x)
+            similarities = -F.softplus(-logits)
 
         # Add the conv net output to the kwargs dict to be passed to the decision nodes in the tree
         # Split (or chunk) the conv net output tensor of shape (batch_size, num_decision_nodes) into individual tensors
