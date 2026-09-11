@@ -1,2 +1,4 @@
 *.log
 *.slurm
+runs/
+pretrained_models/
