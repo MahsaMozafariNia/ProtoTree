@@ -144,12 +144,10 @@ class ProtoTree(nn.Module):
         margin = F.relu(delta - delta_min) + delta_min
         logits = -(min_distances - margin) / (self.prototype_temp + 1e-6)
 
-        if not self._log_probabilities:
-            similarities = torch.sigmoid(logits)
-            similarities = torch.clamp(similarities, min=self.epsilon, max=1 - self.epsilon)
-        else:
-            # Numerically stable log(sigmoid(x)) = -softplus(-x)
-            similarities = -F.softplus(-logits)
+        
+        similarities = torch.sigmoid(logits)
+        similarities = torch.clamp(similarities, min=self.epsilon, max=1 - self.epsilon)
+       
 
         # Add the conv net output to the kwargs dict to be passed to the decision nodes in the tree
         # Split (or chunk) the conv net output tensor of shape (batch_size, num_decision_nodes) into individual tensors

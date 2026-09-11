@@ -16,7 +16,15 @@ def get_args() -> argparse.Namespace:
     parser.add_argument('--dataset',
                         type=str,
                         default='CUB-200-2011',
-                        help='Data set on which the ProtoTree should be trained')
+                        help='Data set on which the ProtoTree should be trained. Options: CUB-200-2011, CARS, face_dataset')
+    parser.add_argument('--face_csv_dir',
+                        type=str,
+                        default='./data/face_dataset',
+                        help="Directory containing train_set.csv and test_set.csv for --dataset face_dataset (columns: image_name, age, ethnicity, gender). Overridable with the FACE_CSV_DIR environment variable.")
+    parser.add_argument('--face_data_root',
+                        type=str,
+                        default='./data/face_dataset/utkcropped',
+                        help="Directory containing the UTKFace images referenced by --face_csv_dir's csv files. Overridable with the FACE_DATA_ROOT environment variable.")
     parser.add_argument('--net',
                         type=str,
                         default='resnet50_inat',
