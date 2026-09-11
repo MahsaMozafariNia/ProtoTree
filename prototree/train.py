@@ -61,9 +61,14 @@ def train_epoch(tree: ProtoTree,
         
         # Compute the gradient
         loss.backward()
+        # Clip gradients so a single bad batch can't push a parameter to inf/NaN
+        torch.nn.utils.clip_grad_norm_(tree.parameters(), max_norm=1.0)
         # Update model parameters
         optimizer.step()
-        
+        # Keep prototypes in the same [0, 1] range as the add-on layer's Sigmoid output
+        with torch.no_grad():
+            tree.prototype_layer.prototype_vectors.data.clamp_(0.0, 1.0)
+
         if not disable_derivative_free_leaf_optim:
             #Update leaves with derivate-free algorithm
             #Make sure the tree is in eval mode
@@ -153,8 +158,13 @@ def train_epoch_kontschieder(tree: ProtoTree,
             loss = F.nll_loss(torch.log(ys_pred), ys)
         # Compute the gradient
         loss.backward()
+        # Clip gradients so a single bad batch can't push a parameter to inf/NaN
+        torch.nn.utils.clip_grad_norm_(tree.parameters(), max_norm=1.0)
         # Update model parameters
         optimizer.step()
+        # Keep prototypes in the same [0, 1] range as the add-on layer's Sigmoid output
+        with torch.no_grad():
+            tree.prototype_layer.prototype_vectors.data.clamp_(0.0, 1.0)
 
         # Count the number of correct classifications
         ys_pred = torch.argmax(ys_pred, dim=1)
