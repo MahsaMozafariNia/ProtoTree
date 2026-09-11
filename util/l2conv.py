@@ -34,6 +34,17 @@ class L2Conv2D(nn.Module):
         :return: a tensor of shape (batch_size, num_prototypes, W, H) obtained from computing the squared L2 distances
                  for patches of the input using all prototypes
         """
+        def check_nan(name, x):
+            if torch.isnan(x).any():
+                raise RuntimeError(f'NaN in {name}')
+            if torch.isinf(x).any():
+                raise RuntimeError(f'INF in {name}')
+
+        # Pinpoint whether the NaN/Inf was already present on the way in (bad prototypes or a
+        # blown-up backbone) before blaming the distance arithmetic below.
+        check_nan('prototype_vectors', self.prototype_vectors)
+        check_nan('xs', xs)
+
         # Adapted from ProtoPNet
         # Computing ||xs - ps ||^2 is equivalent to ||xs||^2 + ||ps||^2 - 2 * xs * ps
         # where ps is some prototype image
@@ -43,26 +54,29 @@ class L2Conv2D(nn.Module):
         ones = torch.ones_like(self.prototype_vectors,
                                device=xs.device)  # Shape: (num_prototypes, num_features, w_1, h_1)
         xs_squared_l2 = F.conv2d(xs ** 2, weight=ones)  # Shape: (bs, num_prototypes, w_in, h_in)
+        check_nan('xs_squared_l2', xs_squared_l2)
 
         # Now compute ||ps||^2
         # We can just use a sum here since ||ps||^2 is the same for each patch in the input image when computing the
         # squared L2 distance
         ps_squared_l2 = torch.sum(self.prototype_vectors ** 2,
                                   dim=(1, 2, 3))  # Shape: (num_prototypes,)
+        check_nan('ps_squared_l2', ps_squared_l2)
         # Reshape the tensor so the dimensions match when computing ||xs||^2 + ||ps||^2
         ps_squared_l2 = ps_squared_l2.view(-1, 1, 1)
 
         # Compute xs * ps (for all patches in the input image)
         xs_conv = F.conv2d(xs, weight=self.prototype_vectors)  # Shape: (bs, num_prototypes, w_in, h_in)
+        check_nan('xs_conv', xs_conv)
 
         # Use the values to compute the squared L2 distance. Floating-point cancellation can push
         # this slightly negative when a patch nearly matches a prototype (it's exactly 0 in exact
         # arithmetic); clamping to a small positive floor -- instead of abs(), which flips the sign
         # -- keeps sqrt's gradient (1/(2*sqrt(x))) from blowing up to NaN as x approaches 0.
         distance = xs_squared_l2 + ps_squared_l2 - 2 * xs_conv
+        check_nan('raw_distance', distance)
         distance = torch.clamp(distance, min=1e-6)
         distance = torch.sqrt(distance + 1e-4) #L2 distance (not squared)
 
-        if torch.isnan(distance).any():
-            raise Exception('Error: NaN values!')
+        check_nan('distance', distance)
         return distance  # Shape: (bs, num_prototypes, w_in, h_in)
