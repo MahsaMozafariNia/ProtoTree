@@ -55,10 +55,14 @@ class L2Conv2D(nn.Module):
         # Compute xs * ps (for all patches in the input image)
         xs_conv = F.conv2d(xs, weight=self.prototype_vectors)  # Shape: (bs, num_prototypes, w_in, h_in)
 
-        # Use the values to compute the squared L2 distance
+        # Use the values to compute the squared L2 distance. Floating-point cancellation can push
+        # this slightly negative when a patch nearly matches a prototype (it's exactly 0 in exact
+        # arithmetic); clamping to a small positive floor -- instead of abs(), which flips the sign
+        # -- keeps sqrt's gradient (1/(2*sqrt(x))) from blowing up to NaN as x approaches 0.
         distance = xs_squared_l2 + ps_squared_l2 - 2 * xs_conv
-        distance = torch.sqrt(torch.abs(distance)+1e-14) #L2 distance (not squared). Small epsilon added for numerical stability
-        
+        distance = torch.clamp(distance, min=1e-6)
+        distance = torch.sqrt(distance + 1e-4) #L2 distance (not squared)
+
         if torch.isnan(distance).any():
-            raise Exception('Error: NaN values! Using the --log_probabilities flag might fix this issue')
+            raise Exception('Error: NaN values!')
         return distance  # Shape: (bs, num_prototypes, w_in, h_in)
