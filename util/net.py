@@ -60,3 +60,12 @@ def freeze(tree: ProtoTree, epoch: int, params_to_freeze: list, params_to_train:
             for parameter in params_to_freeze:
                 parameter.requires_grad = True
 
+def update_temperature(tree: ProtoTree, epoch: int, args: argparse.Namespace, log: Log):
+    """
+    Drops tree.prototype_temp from args.prototype_temp to args.target_temp once epoch reaches
+    args.temp_start_epoch (a step, not a gradual anneal). No-op if --temp_start_epoch is -1 (default).
+    """
+    if args.temp_start_epoch >= 0 and epoch == args.temp_start_epoch:
+        tree.prototype_temp = args.target_temp
+        log.log_message("\nprototype_temp dropped from %s to target_temp=%s"%(str(args.prototype_temp), str(args.target_temp)))
+

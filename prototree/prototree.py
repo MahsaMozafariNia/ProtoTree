@@ -68,7 +68,7 @@ class ProtoTree(nn.Module):
         # temperature that together turn a min-distance into a "go right" probability.
         self.epsilon = 1e-3
         self.prototype_margin = nn.Parameter(torch.ones(self.num_prototypes))
-        self.prototype_temp = getattr(args, 'prototype_temp', 1.0)
+        self.prototype_temp = args.prototype_temp
 
     @property
     def root(self) -> Node:

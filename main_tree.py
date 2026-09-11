@@ -4,7 +4,7 @@ from util.log import Log, get_run_log_dir
 from util.args import get_args, save_args, get_optimizer
 from util.data import get_dataloaders
 from util.init import init_tree
-from util.net import get_network, freeze
+from util.net import get_network, freeze, update_temperature
 from util.visualize import gen_vis
 from util.analyse import *
 from util.save import *
@@ -76,6 +76,7 @@ def run_tree(args=None):
             log.log_message("\nEpoch %s"%str(epoch))
             # Freeze (part of) network for some epochs if indicated in args
             freeze(tree, epoch, params_to_freeze, params_to_train, args, log)
+            update_temperature(tree, epoch, args, log)
             log_learning_rates(optimizer, args, log)
 
             # Train tree

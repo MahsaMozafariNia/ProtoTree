@@ -88,6 +88,18 @@ def get_args() -> argparse.Namespace:
                         type=int,
                         default = 256,
                         help='Depth of the prototype and therefore also depth of convolutional output')
+    parser.add_argument('--prototype_temp',
+                        type=float,
+                        default=1.0,
+                        help='Temperature scaling min-distance-to-margin into a routing probability (see ProtoTree.forward). Lower = sharper routing decisions.')
+    parser.add_argument('--target_temp',
+                        type=float,
+                        default=1.0,
+                        help='Temperature to drop to at --temp_start_epoch. Defaults to --prototype_temp, i.e. no annealing.')
+    parser.add_argument('--temp_start_epoch',
+                        type=int,
+                        default=-1,
+                        help='Epoch at which prototype_temp drops from --prototype_temp to --target_temp. -1 (default) disables annealing.')
     parser.add_argument('--milestones',
                         type=str,
                         default='',
