@@ -135,29 +135,11 @@ def get_cars(augment: bool, train_dir:str, project_dir: str, test_dir:str, img_s
     return trainset, projectset, testset, classes, shape
 
 
-def _percentile_bin_edges(ages: np.ndarray, num_bins: int) -> np.ndarray:
-    """
-    Compute `num_bins` age bins from percentiles of `ages`, so that (as closely as the data
-    allows) each bin holds an equal share of the samples. The outer edges are extended to
-    +/- inf so that ages outside the range seen here (e.g. in a held-out split) still fall
-    into the nearest bin instead of being dropped.
-    """
-    percentiles = np.linspace(0, 100, num_bins + 1)
-    edges = np.unique(np.percentile(ages, percentiles))
-    if len(edges) - 1 < num_bins:
-        raise ValueError(
-            f"Could only form {len(edges) - 1} distinct percentile bins for the requested "
-            f"{num_bins} (= 2^depth) bins; the age values have too many ties. Reduce --depth."
-        )
-    edges[0], edges[-1] = -np.inf, np.inf
-    return edges
-
-
 class UTKFaceBinned(torch.utils.data.Dataset):
     """
     UTKFace-style face dataset (image_name, age, ethnicity, gender columns) that turns the
     continuous age into a classification label by assigning it to one of `len(bin_edges) - 1`
-    percentile-based age bins, so ProtoTree's classification pipeline can be used unchanged.
+    equal-width age bins, so ProtoTree's classification pipeline can be used unchanged.
     """
 
     def __init__(self, root_dir: str, csv_file: str, bin_edges: np.ndarray, transform):
@@ -200,11 +182,12 @@ def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, 
         normalize,
     ])
 
-    # Number of age bins matches the number of leaves in the (complete) tree of this depth,
-    # so every leaf is naturally responsible for one percentile-based age bracket.
+    # One equal-width age bin per leaf: max_age / num_leaves, rounded to whole years.
     num_bins = 2 ** args.depth
-    train_ages = pd.read_csv(csv_file_train)['age'].astype(float).values
-    bin_edges = _percentile_bin_edges(train_ages, num_bins)
+    max_age = pd.read_csv(csv_file_train)['age'].astype(float).max()
+    bin_width = round(max_age / num_bins)
+    bin_edges = np.array([i * bin_width for i in range(num_bins + 1)], dtype=float)
+    bin_edges[0], bin_edges[-1] = -np.inf, np.inf
 
     trainset = UTKFaceBinned(data_root, csv_file_train, bin_edges, transform)
     projectset = UTKFaceBinned(data_root, csv_file_project, bin_edges, transform_no_augment)
