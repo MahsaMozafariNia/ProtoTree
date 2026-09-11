@@ -1,7 +1,6 @@
 import argparse
 import torch
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 import numpy as np
 
 from prototree.prototree import ProtoTree
@@ -30,19 +29,11 @@ def project(tree: ProtoTree,
     # Get the shape of the prototypes
     W1, H1, D = tree.prototype_shape
 
-    # Build a progress bar for showing the status
-    projection_iter = tqdm(enumerate(project_loader),
-                            total=len(project_loader),
-                            desc=progress_prefix,
-                            ncols=0
-                            )
-
-    
     with torch.no_grad():
         # Get a batch of data
         xs, ys = next(iter(project_loader))
         batch_size = xs.shape[0]
-        for i, (xs, ys) in projection_iter:
+        for i, (xs, ys) in enumerate(project_loader):
             xs, ys = xs.to(device), ys.to(device)
             # Get the features and distances
             # - features_batch: features tensor (shared by all prototypes)
@@ -93,9 +84,6 @@ def project(tree: ProtoTree,
                             'node_ix': node.index,
                         }
 
-            # Update the progress bar if required
-            projection_iter.set_postfix_str(f'Batch: {i + 1}/{len(project_loader)}')
-
             del features_batch
             del distances_batch
             del out_map
@@ -130,18 +118,11 @@ def project_with_class_constraints(tree: ProtoTree,
     # Get the shape of the prototypes
     W1, H1, D = tree.prototype_shape
 
-    # Build a progress bar for showing the status
-    projection_iter = tqdm(enumerate(project_loader),
-                            total=len(project_loader),
-                            desc=progress_prefix,
-                            ncols=0
-                            )
-
     with torch.no_grad():
         # Get a batch of data
         xs, ys = next(iter(project_loader))
         batch_size = xs.shape[0]
-        # For each internal node, collect the leaf labels in the subtree with this node as root. 
+        # For each internal node, collect the leaf labels in the subtree with this node as root.
         # Only images from these classes can be used for projection.
         leaf_labels_subtree = dict()
         
@@ -150,7 +131,7 @@ def project_with_class_constraints(tree: ProtoTree,
             for leaf in branch.leaves:
                 leaf_labels_subtree[branch.index].add(torch.argmax(leaf.distribution()).item())
         
-        for i, (xs, ys) in projection_iter:
+        for i, (xs, ys) in enumerate(project_loader):
             xs, ys = xs.to(device), ys.to(device)
             # Get the features and distances
             # - features_batch: features tensor (shared by all prototypes)
@@ -201,9 +182,6 @@ def project_with_class_constraints(tree: ProtoTree,
                                 'nearest_input': torch.unsqueeze(xs[batch_i],0),
                                 'node_ix': node.index,
                             }
-
-            # Update the progress bar if required
-            projection_iter.set_postfix_str(f'Batch: {i + 1}/{len(project_loader)}')
 
             del features_batch
             del distances_batch

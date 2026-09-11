@@ -17,7 +17,6 @@ Figure shows an example of a ProtoTree. A ProtoTree is a globally interpretable 
 * numpy
 * pandas
 * opencv
-* tqdm
 * scipy
 * matplotlib
 * requests (to download the CARS dataset, or download it manually)

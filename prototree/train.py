@@ -1,4 +1,3 @@
-from tqdm import tqdm
 import argparse
 from copy import deepcopy
 import torch
@@ -40,13 +39,8 @@ def train_epoch(tree: ProtoTree,
         # Optimize class distributions in leafs
         eye = torch.eye(tree._num_classes).to(device)
 
-    # Show progress on progress bar
-    train_iter = tqdm(enumerate(train_loader),
-                    total=len(train_loader),
-                    desc=progress_prefix+' %s'%epoch,
-                    ncols=0)
     # Iterate through the data set to update leaves, prototypes and network
-    for i, (xs, ys) in train_iter:
+    for i, (xs, ys) in enumerate(train_loader):
         # Make sure the model is in train mode
         tree.train()
         # Reset the gradients
@@ -92,9 +86,6 @@ def train_epoch(tree: ProtoTree,
         correct = torch.sum(torch.eq(ys_pred_max, ys))
         acc = correct.item() / float(len(xs))
 
-        train_iter.set_postfix_str(
-            f'Batch [{i + 1}/{len(train_loader)}], Loss: {loss.item():.3f}, Acc: {acc:.3f}'
-        )
         # Compute metrics over this batch
         total_loss+=loss.item()
         total_acc+=acc
@@ -104,7 +95,7 @@ def train_epoch(tree: ProtoTree,
 
     train_info['loss'] = total_loss/float(i+1)
     train_info['train_accuracy'] = total_acc/float(i+1)
-    return train_info 
+    return train_info
 
 
 def train_epoch_kontschieder(tree: ProtoTree,
@@ -144,16 +135,11 @@ def train_epoch_kontschieder(tree: ProtoTree,
         else:
             # Train leaves with Kontschieder's derivative-free algorithm, but using softmax
             train_leaves_epoch(tree, train_loader, epoch, device)
-    # Train prototypes and network. 
+    # Train prototypes and network.
     # If disable_derivative_free_leaf_optim, leafs are optimized with gradient descent as well.
-    # Show progress on progress bar
-    train_iter = tqdm(enumerate(train_loader),
-                        total=len(train_loader),
-                        desc=progress_prefix+' %s'%epoch,
-                        ncols=0)
     # Make sure the model is in train mode
     tree.train()
-    for i, (xs, ys) in train_iter:
+    for i, (xs, ys) in enumerate(train_loader):
         xs, ys = xs.to(device), ys.to(device)
 
         # Reset the gradients
@@ -176,19 +162,16 @@ def train_epoch_kontschieder(tree: ProtoTree,
         correct = torch.sum(torch.eq(ys_pred, ys))
         acc = correct.item() / float(len(xs))
 
-        train_iter.set_postfix_str(
-            f'Batch [{i + 1}/{len(train_loader)}], Loss: {loss.item():.3f}, Acc: {acc:.3f}'
-        )
         # Compute metrics over this batch
         total_loss+=loss.item()
         total_acc+=acc
 
         if log is not None:
             log.log_values(log_loss, epoch, i + 1, loss.item(), acc)
-        
+
     train_info['loss'] = total_loss/float(i+1)
     train_info['train_accuracy'] = total_acc/float(i+1)
-    return train_info 
+    return train_info
 
 # Updates leaves with derivative-free algorithm
 def train_leaves_epoch(tree: ProtoTree,
@@ -208,21 +191,14 @@ def train_leaves_epoch(tree: ProtoTree,
         # Optimize class distributions in leafs
         eye = torch.eye(tree._num_classes).to(device)
 
-        # Show progress on progress bar
-        train_iter = tqdm(enumerate(train_loader),
-                        total=len(train_loader),
-                        desc=progress_prefix+' %s'%epoch,
-                        ncols=0)
-        
-        
         # Iterate through the data set
         update_sum = dict()
 
         # Create empty tensor for each leaf that will be filled with new values
         for leaf in tree.leaves:
             update_sum[leaf] = torch.zeros_like(leaf._dist_params)
-        
-        for i, (xs, ys) in train_iter:
+
+        for i, (xs, ys) in enumerate(train_loader):
             xs, ys = xs.to(device), ys.to(device)
             #Train leafs without gradient descent
             out, info = tree.forward(xs)

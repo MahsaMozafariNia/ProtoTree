@@ -1,7 +1,22 @@
 import os
 import argparse
+import re
 
 from util.args import save_args, load_args
+
+def get_run_log_dir(base_dir: str) -> str:
+    """
+    Returns a fresh 'run_N' subdirectory of base_dir (not yet created), so each run gets its
+    own folder under e.g. --log_dir ./runs/prototree_face instead of overwriting the previous one.
+    """
+    os.makedirs(base_dir, exist_ok=True)
+    existing = []
+    for d in os.listdir(base_dir):
+        m = re.fullmatch(r'run_(\d+)', d)
+        if m:
+            existing.append(int(m.group(1)))
+    next_id = max(existing, default=0) + 1
+    return os.path.join(base_dir, f'run_{next_id}')
 
 class Log:
 

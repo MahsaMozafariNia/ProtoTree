@@ -1,5 +1,4 @@
 import argparse
-from tqdm import tqdm
 import numpy as np
 
 import torch
@@ -33,14 +32,8 @@ def eval(tree: ProtoTree,
     # Make sure the model is in evaluation mode
     tree.eval()
 
-    # Show progress on progress bar
-    test_iter = tqdm(enumerate(test_loader),
-                        total=len(test_loader),
-                        desc=progress_prefix+' %s'%epoch,
-                        ncols=0)
-
     # Iterate through the test set
-    for i, (xs, ys) in test_iter:
+    for i, (xs, ys) in enumerate(test_loader):
         xs, ys = xs.to(device), ys.to(device)
 
         # Use the model to classify this batch of input data
@@ -52,10 +45,6 @@ def eval(tree: ProtoTree,
         for y_pred, y_true in zip(ys_pred, ys):
             cm[y_true][y_pred] += 1
             cm_batch[y_true][y_pred] += 1
-        acc = acc_from_cm(cm_batch)
-        test_iter.set_postfix_str(
-            f'Batch [{i + 1}/{len(test_iter)}], Acc: {acc:.3f}'
-        )
 
         # keep list of leaf indices where test sample ends up when deterministic routing is used.
         if sampling_strategy != 'distributed':
@@ -83,16 +72,11 @@ def eval_fidelity(tree: ProtoTree,
 
     # Make sure the model is in evaluation mode
     tree.eval()
-    # Show progress on progress bar
-    test_iter = tqdm(enumerate(test_loader),
-                        total=len(test_loader),
-                        desc=progress_prefix,
-                        ncols=0)
 
     distr_samplemax_fidelity = 0
     distr_greedy_fidelity = 0
     # Iterate through the test set
-    for i, (xs, ys) in test_iter:
+    for i, (xs, ys) in enumerate(test_loader):
         xs, ys = xs.to(device), ys.to(device)
 
         # Use the model to classify this batch of input data, with 3 types of routing
@@ -104,14 +88,10 @@ def eval_fidelity(tree: ProtoTree,
 
         out_greedy, _ = tree.forward(xs, 'greedy')
         ys_pred_greedy = torch.argmax(out_greedy, dim=1)
-        
+
         # Calculate fidelity
         distr_samplemax_fidelity += torch.sum(torch.eq(ys_pred_samplemax, ys_pred_distr)).item()
         distr_greedy_fidelity += torch.sum(torch.eq(ys_pred_greedy, ys_pred_distr)).item()
-        # Update the progress bar
-        test_iter.set_postfix_str(
-            f'Batch [{i + 1}/{len(test_iter)}]'
-        )
         del out_distr
         del out_samplemax
         del out_greedy
@@ -129,16 +109,10 @@ def eval_ensemble(trees: list, test_loader: DataLoader, device, log: Log, args: 
     # Keep an info dict about the procedure
     info = dict()
     # Build a confusion matrix
-    cm = np.zeros((trees[0]._num_classes, trees[0]._num_classes), dtype=int)    
-
-    # Show progress on progress bar
-    test_iter = tqdm(enumerate(test_loader),
-                        total=len(test_loader),
-                        desc=progress_prefix,
-                        ncols=0)
+    cm = np.zeros((trees[0]._num_classes, trees[0]._num_classes), dtype=int)
 
     # Iterate through the test set
-    for i, (xs, ys) in test_iter:
+    for i, (xs, ys) in enumerate(test_loader):
         xs, ys = xs.to(device), ys.to(device)
         outs = []
         for tree in trees:
@@ -151,13 +125,10 @@ def eval_ensemble(trees: list, test_loader: DataLoader, device, log: Log, args: 
             del out
         stacked = torch.stack(outs, dim=0)
         ys_pred = torch.argmax(torch.mean(stacked, dim=0), dim=1)
-        
+
         for y_pred, y_true in zip(ys_pred, ys):
             cm[y_true][y_pred] += 1
-            
-        test_iter.set_postfix_str(
-            f'Batch [{i + 1}/{len(test_iter)}]'
-        )
+
         del outs
             
     info['confusion_matrix'] = cm
