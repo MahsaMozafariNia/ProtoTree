@@ -147,6 +147,15 @@ class UTKFaceBinned(torch.utils.data.Dataset):
         self.data = pd.read_csv(csv_file)
         self.bin_edges = bin_edges
         self.transform = transform
+        # ImageFolder-style (path, label) list, in row order (matches the unshuffled
+        # projectloader), for code that expects torchvision.datasets.ImageFolder's .imgs
+        # (e.g. prototree/upsample.py indexing project_loader.dataset.imgs[i]).
+        self.imgs = [(os.path.join(root_dir, row.image_name), self._label(row.age))
+                     for row in self.data.itertuples()]
+
+    def _label(self, age: float) -> int:
+        # Internal edges only (drop the -inf/+inf outer edges) so digitize returns 0..num_bins-1
+        return int(np.digitize([float(age)], self.bin_edges[1:-1], right=False)[0])
 
     def __len__(self):
         return len(self.data)
@@ -155,9 +164,7 @@ class UTKFaceBinned(torch.utils.data.Dataset):
         row = self.data.iloc[idx]
         image = Image.open(os.path.join(self.root_dir, row['image_name'])).convert('RGB')
         image = self.transform(image)
-        # Internal edges only (drop the -inf/+inf outer edges) so digitize returns 0..num_bins-1
-        label = int(np.digitize([float(row['age'])], self.bin_edges[1:-1], right=False)[0])
-        return image, label
+        return image, self._label(row['age'])
 
 
 def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, csv_file_test: str, img_size=224):
