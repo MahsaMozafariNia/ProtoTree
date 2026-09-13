@@ -261,7 +261,10 @@ def resnet50_features(pretrained=False, **kwargs):
     """
     model = ResNet_features(Bottleneck, [3, 4, 6, 3], **kwargs)
     if pretrained:
-        my_dict = model_zoo.load_url(model_urls['resnet50'], model_dir=model_dir)
+        # Load from the local cache directly instead of model_zoo.load_url, which tries to
+        # reach download.pytorch.org -- unreachable from compute nodes with no outbound internet.
+        state_dict_path = os.path.join(model_dir, os.path.basename(model_urls['resnet50']))
+        my_dict = torch.load(state_dict_path, map_location='cpu')
         my_dict.pop('fc.weight')
         my_dict.pop('fc.bias')
         model.load_state_dict(my_dict, strict=False)
