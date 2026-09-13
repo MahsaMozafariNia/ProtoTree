@@ -73,7 +73,11 @@ def train_epoch(tree: ProtoTree,
         if tree._log_probabilities:
             loss = F.nll_loss(ys_pred, ys)
         else:
-            loss = F.nll_loss(torch.log(ys_pred), ys)
+            # Floor before log: if ys_pred underflows to exactly 0 (float32), log(0) = -inf,
+            # producing an inf loss and, through backward(), NaN gradients everywhere. Flooring
+            # only ever changes an already-vanishing probability, so it doesn't touch normal-range
+            # predictions or the model's actual behavior.
+            loss = F.nll_loss(torch.log(torch.clamp(ys_pred, min=1e-6)), ys)
 
         if _report_nan('loss', loss.detach().view(1), epoch, i):
             print(f"[NaN CHECK] epoch={epoch} batch={i} ys min/max: "
@@ -193,7 +197,8 @@ def train_epoch_kontschieder(tree: ProtoTree,
         if tree._log_probabilities:
             loss = F.nll_loss(ys_pred, ys)
         else:
-            loss = F.nll_loss(torch.log(ys_pred), ys)
+            # See train_epoch: floor before log to avoid log(0) = -inf on an underflowed prediction.
+            loss = F.nll_loss(torch.log(torch.clamp(ys_pred, min=1e-6)), ys)
         # Compute the gradient
         loss.backward()
         # Clip gradients so a single bad batch can't push a parameter to inf/NaN
