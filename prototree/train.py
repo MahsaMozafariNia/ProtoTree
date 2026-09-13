@@ -10,6 +10,17 @@ from prototree.prototree import ProtoTree
 
 from util.log import Log
 
+def _report_nan(name: str, tensor: torch.Tensor, epoch: int, batch: int) -> bool:
+    """Prints and returns True the first time `tensor` contains a NaN/Inf, otherwise returns False."""
+    nan = torch.isnan(tensor).any().item()
+    inf = torch.isinf(tensor).any().item()
+    if nan or inf:
+        finite = tensor[torch.isfinite(tensor)]
+        rng = (finite.min().item(), finite.max().item()) if finite.numel() else ('n/a', 'n/a')
+        print(f"[NaN CHECK] epoch={epoch} batch={batch} tensor={name} nan={nan} inf={inf} "
+              f"finite_range={rng} shape={tuple(tensor.shape)}", flush=True)
+    return nan or inf
+
 def train_epoch(tree: ProtoTree,
                 train_loader: DataLoader,
                 optimizer: torch.optim.Optimizer,
@@ -51,23 +62,45 @@ def train_epoch(tree: ProtoTree,
         # Perform a forward pass through the network
         ys_pred, info = tree.forward(xs)
 
-        # Learn prototypes and network with gradient descent. 
+        # --- NaN diagnostics: forward pass output, before this batch touches any parameter ---
+        _report_nan('ys_pred (post-forward)', ys_pred, epoch, i)
+        _report_nan('prototype_margin (pre-update)', tree.prototype_margin, epoch, i)
+        _report_nan('prototype_vectors (pre-update)', tree.prototype_layer.prototype_vectors, epoch, i)
+
+        # Learn prototypes and network with gradient descent.
         # If disable_derivative_free_leaf_optim, leaves are optimized with gradient descent as well.
         # Compute the loss
         if tree._log_probabilities:
             loss = F.nll_loss(ys_pred, ys)
         else:
             loss = F.nll_loss(torch.log(ys_pred), ys)
-        
+
+        if _report_nan('loss', loss.detach().view(1), epoch, i):
+            print(f"[NaN CHECK] epoch={epoch} batch={i} ys min/max: "
+                  f"{ys_pred.min().item():.3e}/{ys_pred.max().item():.3e}", flush=True)
+
         # Compute the gradient
         loss.backward()
-        # Clip gradients so a single bad batch can't push a parameter to inf/NaN
-        torch.nn.utils.clip_grad_norm_(tree.parameters(), max_norm=1.0)
+
+        # --- NaN diagnostics: gradients, before clipping/stepping ---
+        grad_norm = torch.nn.utils.clip_grad_norm_(tree.parameters(), max_norm=1.0)
+        if not torch.isfinite(grad_norm) or grad_norm.item() > 50:
+            print(f"[NaN CHECK] epoch={epoch} batch={i} grad_norm(pre-clip)={grad_norm.item():.3e}", flush=True)
+        if tree.prototype_margin.grad is not None:
+            _report_nan('prototype_margin.grad', tree.prototype_margin.grad, epoch, i)
+        if tree.prototype_layer.prototype_vectors.grad is not None:
+            _report_nan('prototype_vectors.grad', tree.prototype_layer.prototype_vectors.grad, epoch, i)
+
         # Update model parameters
         optimizer.step()
         # Keep prototypes in the same [0, 1] range as the add-on layer's Sigmoid output
         with torch.no_grad():
             tree.prototype_layer.prototype_vectors.data.clamp_(0.0, 1.0)
+
+        # --- NaN diagnostics: right after this batch's update -- if either fires here, this
+        # batch is the one that broke it, and the grad/loss prints above say why ---
+        _report_nan('prototype_margin (post-update)', tree.prototype_margin, epoch, i)
+        _report_nan('prototype_vectors (post-update)', tree.prototype_layer.prototype_vectors, epoch, i)
 
         if not disable_derivative_free_leaf_optim:
             #Update leaves with derivate-free algorithm
@@ -88,6 +121,7 @@ def train_epoch(tree: ProtoTree,
                     leaf._dist_params -= (_old_dist_params[leaf]/nr_batches)
                     F.relu_(leaf._dist_params) #dist_params values can get slightly negative because of floating point issues. therefore, set to zero.
                     leaf._dist_params += update
+                    _report_nan(f'leaf[{leaf.index}]._dist_params', leaf._dist_params, epoch, i)
 
         # Count the number of correct classifications
         ys_pred_max = torch.argmax(ys_pred, dim=1)
