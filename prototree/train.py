@@ -74,13 +74,17 @@ def train_epoch(tree: ProtoTree,
             #Make sure the tree is in eval mode
             tree.eval()
             with torch.no_grad():
-                target = eye[ys] #shape (batchsize, num_classes) 
-                for leaf in tree.leaves:  
+                target = eye[ys] #shape (batchsize, num_classes)
+                # Floor ys_pred away from 0 before dividing by it below -- without this, a
+                # near-zero predicted probability blows the update up to inf/NaN, which then
+                # corrupts leaf._dist_params and, via the next forward/backward pass, prototype_vectors.
+                ys_pred_safe = torch.clamp(ys_pred, min=1e-6)
+                for leaf in tree.leaves:
                     if tree._log_probabilities:
                         # log version
                         update = torch.exp(torch.logsumexp(info['pa_tensor'][leaf.index] + leaf.distribution() + torch.log(target) - ys_pred, dim=0))
                     else:
-                        update = torch.sum((info['pa_tensor'][leaf.index] * leaf.distribution() * target)/ys_pred, dim=0)  
+                        update = torch.sum((info['pa_tensor'][leaf.index] * leaf.distribution() * target)/ys_pred_safe, dim=0)
                     leaf._dist_params -= (_old_dist_params[leaf]/nr_batches)
                     F.relu_(leaf._dist_params) #dist_params values can get slightly negative because of floating point issues. therefore, set to zero.
                     leaf._dist_params += update
@@ -212,13 +216,15 @@ def train_leaves_epoch(tree: ProtoTree,
             xs, ys = xs.to(device), ys.to(device)
             #Train leafs without gradient descent
             out, info = tree.forward(xs)
-            target = eye[ys] #shape (batchsize, num_classes) 
-            for leaf in tree.leaves:  
+            target = eye[ys] #shape (batchsize, num_classes)
+            # See the same guard in train_epoch: floor out away from 0 before dividing by it.
+            out_safe = torch.clamp(out, min=1e-6)
+            for leaf in tree.leaves:
                 if tree._log_probabilities:
                     # log version
                     update = torch.exp(torch.logsumexp(info['pa_tensor'][leaf.index] + leaf.distribution() + torch.log(target) - out, dim=0))
                 else:
-                    update = torch.sum((info['pa_tensor'][leaf.index] * leaf.distribution() * target)/out, dim=0)
+                    update = torch.sum((info['pa_tensor'][leaf.index] * leaf.distribution() * target)/out_safe, dim=0)
                 update_sum[leaf] += update
 
         for leaf in tree.leaves:
