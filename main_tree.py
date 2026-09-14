@@ -99,13 +99,16 @@ def run_tree(args=None):
                     original_test_acc = eval_info['test_accuracy']
                     best_valid_acc = save_best_valid_tree(tree, optimizer, scheduler, best_valid_acc, eval_info['test_accuracy'], log)
                     log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], train_info['train_accuracy'], train_info['loss'])
+                    print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}, test_acc={eval_info['test_accuracy']:.4f}", flush=True)
                 else:
                     log.log_values('log_epoch_overview', epoch, "n.a.", train_info['train_accuracy'], train_info['loss'])
+                    print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}", flush=True)
             else:
                 eval_info = eval(tree, testloader, epoch, device, log)
                 original_test_acc = eval_info['test_accuracy']
                 best_valid_acc = save_best_valid_tree(tree, optimizer, scheduler, best_valid_acc, eval_info['test_accuracy'], log)
                 log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], train_info['train_accuracy'], train_info['loss'])
+                print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}, test_acc={eval_info['test_accuracy']:.4f}", flush=True)
 
             scheduler.step()
 
