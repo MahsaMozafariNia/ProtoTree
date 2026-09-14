@@ -1,4 +1,5 @@
 import argparse
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from prototree.prototree import ProtoTree
@@ -30,9 +31,29 @@ base_architecture_to_features = {'resnet18': resnet18_features,
     Create network with pretrained features and 1x1 convolutional layer
 
 """
+FACE_PRETRAINED_PATH = './pretrained_models/resnet_baseline_face_dataset_size224_lr0.0001_ep50_powerful_augument_False.pth'
+
+def _load_face_pretrained(features: nn.Module):
+    """
+    Loads resnet50 weights fine-tuned on face_dataset (saved by ga-reg's train_baseline.py) into
+    a ProtoTree ResNet_features backbone. The checkpoint wraps the resnet50 as
+    BaselineRegressionModel.model (keys prefixed "model.") and carries its own regression head
+    (keys prefixed "model.fc.") which ProtoTree's feature extractor doesn't have, so both the
+    prefix and the head are stripped before loading.
+    """
+    checkpoint = torch.load(FACE_PRETRAINED_PATH, map_location='cpu')
+    state_dict = checkpoint.get('model_state_dict', checkpoint)
+    state_dict = {k[len('model.'):]: v for k, v in state_dict.items()
+                  if k.startswith('model.') and not k.startswith('model.fc.')}
+    features.load_state_dict(state_dict, strict=False)
+
 def get_network(num_in_channels: int, args: argparse.Namespace):
     # Define a conv net for estimating the probabilities at each decision node
-    features = base_architecture_to_features[args.net](pretrained=not args.disable_pretrained)            
+    if args.pretrained_face:
+        features = base_architecture_to_features[args.net](pretrained=False)
+        _load_face_pretrained(features)
+    else:
+        features = base_architecture_to_features[args.net](pretrained=not args.disable_pretrained)
     features_name = str(features).upper()
     if features_name.startswith('VGG') or features_name.startswith('RES'):
         first_add_on_layer_in_channels = \

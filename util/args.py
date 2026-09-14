@@ -133,6 +133,10 @@ def get_args() -> argparse.Namespace:
                         action='store_true',
                         help='When set, the backbone network is initialized with random weights instead of being pretrained on another dataset). When not set, resnet50_inat is initalized with weights from iNaturalist2017. Other networks are initialized with weights from ImageNet'
                         )
+    parser.add_argument('--pretrained_face',
+                        action='store_true',
+                        help="Load resnet50 weights fine-tuned on face_dataset (./pretrained_models/resnet_baseline_face_dataset_size224_lr0.0001_ep50_powerful_augument_False.pth) instead of generic ImageNet weights. Only applies to --net resnet50."
+                        )
     parser.add_argument('--disable_derivative_free_leaf_optim',
                         action='store_true',
                         help='Flag that optimizes the leafs with gradient descent when set instead of using the derivative-free algorithm'
