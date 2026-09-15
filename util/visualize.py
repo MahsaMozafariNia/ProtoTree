@@ -1,9 +1,7 @@
 import os
-import subprocess
 import numpy as np
 import copy
 import argparse
-from subprocess import check_call
 from PIL import Image
 import torch
 import math
@@ -30,10 +28,6 @@ def gen_vis(tree: ProtoTree, folder_name: str, args: argparse.Namespace, classes
 
     with open(os.path.join(destination_folder,'treevis.dot'), 'w') as f:
         f.write(s)
-   
-    from_p = os.path.join(destination_folder,'treevis.dot')
-    to_pdf = os.path.join(destination_folder,'treevis.pdf')
-    check_call('dot -Tpdf -Gmargin=0 %s -o %s'%(from_p, to_pdf), shell=True)
 
 def _node_vis(node: Node, upsample_dir: str):
     if isinstance(node, Leaf):

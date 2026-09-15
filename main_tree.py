@@ -28,6 +28,9 @@ def run_tree(args=None):
     log.create_log('log_epoch_overview', 'epoch', 'test_acc', 'mean_train_acc', 'mean_train_crossentropy_loss_during_epoch')
     # Log the run arguments
     save_args(args, log.metadata_dir)
+    print("Args:", flush=True)
+    for arg in vars(args):
+        print(f"  {arg}: {getattr(args, arg)}", flush=True)
     if not args.disable_cuda and torch.cuda.is_available():
         # device = torch.device('cuda')
         device = torch.device('cuda:{}'.format(torch.cuda.current_device()))
