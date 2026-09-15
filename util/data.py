@@ -189,11 +189,24 @@ def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, 
         normalize,
     ])
 
-    # One equal-width age bin per leaf: max_age / num_leaves, rounded to whole years.
     num_bins = 2 ** args.depth
-    max_age = pd.read_csv(csv_file_train)['age'].astype(float).max()
-    bin_width = round(max_age / num_bins)
-    bin_edges = np.array([i * bin_width for i in range(num_bins + 1)], dtype=float)
+    train_ages = pd.read_csv(csv_file_train)['age'].astype(float).values
+    if args.bin_strategy == 'quantile':
+        # Percentile edges of the training ages, so each bin holds roughly num_train/num_bins
+        # samples (fixes the severe class imbalance equal-width bins produce, e.g. UTKFace's
+        # 25-30 bin outnumbering its 70-75 bin ~14 to 1) -- at the cost of uneven bin widths.
+        percentiles = np.linspace(0, 100, num_bins + 1)
+        bin_edges = np.unique(np.percentile(train_ages, percentiles))
+        if len(bin_edges) - 1 < num_bins:
+            raise ValueError(
+                f"Could only form {len(bin_edges) - 1} distinct quantile bins for the requested "
+                f"{num_bins} (= 2^depth); the ages have too many ties. Reduce --depth."
+            )
+    else:
+        # One equal-width age bin per leaf: max_age / num_leaves, rounded to whole years.
+        max_age = train_ages.max()
+        bin_width = round(max_age / num_bins)
+        bin_edges = np.array([i * bin_width for i in range(num_bins + 1)], dtype=float)
     bin_edges[0], bin_edges[-1] = -np.inf, np.inf
 
     trainset = UTKFaceBinned(data_root, csv_file_train, bin_edges, transform)

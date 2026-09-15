@@ -25,6 +25,11 @@ def get_args() -> argparse.Namespace:
                         type=str,
                         default='./data/face_dataset/utkcropped',
                         help="Directory containing the UTKFace images referenced by --face_csv_dir's csv files. Overridable with the FACE_DATA_ROOT environment variable.")
+    parser.add_argument('--bin_strategy',
+                        type=str,
+                        default='equal_width',
+                        choices=['equal_width', 'quantile'],
+                        help="How --dataset face_dataset turns age into 2^depth classes. 'equal_width': bins of max_age/2^depth years each (simple, but bin sizes can be very imbalanced -- e.g. UTKFace's 25-30 bin has ~14x more samples than its 70-75 bin). 'quantile': bin edges are percentiles of the training ages, so every bin has roughly the same number of samples (bin widths vary instead).")
     parser.add_argument('--net',
                         type=str,
                         default='resnet50_inat',
