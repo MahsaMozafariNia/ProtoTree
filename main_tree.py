@@ -95,22 +95,8 @@ def run_tree(args=None):
                 save_half_epoch(tree, optimizer, scheduler, log)
             leaf_labels = analyse_leafs(tree, epoch, len(classes), leaf_labels, args.pruning_threshold_leaves, log)
 
-            # Evaluate tree
-            if args.epochs>100:
-                if epoch%10==0 or epoch==args.epochs:
-                    eval_info = eval(tree, testloader, epoch, device, log)
-                    original_test_acc = eval_info['test_accuracy']
-                    best_valid_acc = save_best_valid_tree(tree, optimizer, scheduler, best_valid_acc, eval_info['test_accuracy'], log)
-                    log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], train_info['train_accuracy'], train_info['loss'])
-                    mae_str = ""
-                    if args.dataset == 'face_dataset':
-                        mae_info = eval_mae(tree, testloader, device, log)
-                        mae_str = f", hard_mae={mae_info['hard_mae']:.2f}yr, soft_mae={mae_info['soft_mae']:.2f}yr"
-                    print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}, test_acc={eval_info['test_accuracy']:.4f}{mae_str}", flush=True)
-                else:
-                    log.log_values('log_epoch_overview', epoch, "n.a.", train_info['train_accuracy'], train_info['loss'])
-                    print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}", flush=True)
-            else:
+            # Evaluate tree every 5 epochs (and always on the last one), regardless of --epochs
+            if epoch % 5 == 0 or epoch == args.epochs:
                 eval_info = eval(tree, testloader, epoch, device, log)
                 original_test_acc = eval_info['test_accuracy']
                 best_valid_acc = save_best_valid_tree(tree, optimizer, scheduler, best_valid_acc, eval_info['test_accuracy'], log)
@@ -120,6 +106,9 @@ def run_tree(args=None):
                     mae_info = eval_mae(tree, testloader, device, log)
                     mae_str = f", hard_mae={mae_info['hard_mae']:.2f}yr, soft_mae={mae_info['soft_mae']:.2f}yr"
                 print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}, test_acc={eval_info['test_accuracy']:.4f}{mae_str}", flush=True)
+            else:
+                log.log_values('log_epoch_overview', epoch, "n.a.", train_info['train_accuracy'], train_info['loss'])
+                print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}", flush=True)
 
             scheduler.step()
 
