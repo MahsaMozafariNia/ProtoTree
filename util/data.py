@@ -198,10 +198,12 @@ def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, 
         percentiles = np.linspace(0, 100, num_bins + 1)
         bin_edges = np.unique(np.percentile(train_ages, percentiles))
         if len(bin_edges) - 1 < num_bins:
-            raise ValueError(
-                f"Could only form {len(bin_edges) - 1} distinct quantile bins for the requested "
-                f"{num_bins} (= 2^depth); the ages have too many ties. Reduce --depth."
-            )
+            # Integer ages create duplicate percentile edges at fine enough resolution. The
+            # model doesn't require num_classes == num_leaves, so proceed with fewer, wider
+            # bins rather than erroring out.
+            print(f"face_dataset: requested {num_bins} quantile bins (2^depth) but the training "
+                  f"ages only support {len(bin_edges) - 1} distinct ones (too many ties); "
+                  f"using {len(bin_edges) - 1} classes instead.", flush=True)
     else:
         # One equal-width age bin per leaf: max_age / num_leaves, rounded to whole years.
         max_age = train_ages.max()
