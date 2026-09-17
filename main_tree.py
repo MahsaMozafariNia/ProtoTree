@@ -14,12 +14,22 @@ from prototree.prune import prune
 from prototree.project import project, project_with_class_constraints
 from prototree.upsample import upsample
 
+import random
+import numpy as np
 import torch
 from shutil import copy
 from copy import deepcopy
 
 def run_tree(args=None):
     args = args or get_args()
+    # Seed everything before any randomness (prototype init, augmentation, batch shuffling,
+    # dropout) happens, so runs with the same arguments are reproducible.
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
     # Create a logger, in a fresh run_N subdirectory of args.log_dir so repeated runs don't overwrite each other
     args.log_dir = get_run_log_dir(args.log_dir)
     log = Log(args.log_dir)

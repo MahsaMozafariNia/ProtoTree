@@ -13,6 +13,10 @@ import torch.optim
 def get_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser('Train a ProtoTree')
+    parser.add_argument('--seed',
+                        type=int,
+                        default=1,
+                        help='Random seed for python/numpy/torch, so runs with the same arguments are reproducible.')
     parser.add_argument('--dataset',
                         type=str,
                         default='CUB-200-2011',
