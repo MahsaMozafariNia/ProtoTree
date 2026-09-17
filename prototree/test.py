@@ -58,6 +58,61 @@ def eval(tree: ProtoTree,
     log.log_message("\nEpoch %s - Test accuracy with %s routing: "%(epoch, sampling_strategy)+str(info['test_accuracy']))
     return info
 
+def _bin_midpoints(bin_edges: np.ndarray, ages: np.ndarray) -> torch.Tensor:
+    """
+    Representative age (midpoint) for each bin, for turning a bin classification back into an
+    age estimate. The open-ended outer edges (+/-inf) are swapped for this dataset's own observed
+    min/max age first, so those two bins get a real, finite midpoint instead of +/-inf.
+    """
+    edges = bin_edges.copy()
+    edges[0] = ages.min()
+    edges[-1] = ages.max()
+    return torch.tensor((edges[:-1] + edges[1:]) / 2, dtype=torch.float32)
+
+@torch.no_grad()
+def eval_mae(tree: ProtoTree,
+        test_loader: DataLoader,
+        device,
+        log: Log = None
+        ) -> dict:
+    """
+    Age-specific evaluation for --dataset face_dataset (test_loader.dataset must be a
+    UTKFaceBinned, i.e. expose .bin_edges and .data['age']): turns the bin classification back
+    into an age estimate via bin midpoints, then reports MAE in years two ways --
+      - hard_mae: midpoint of the single most likely bin (argmax), like a normal classifier
+      - soft_mae: probability-weighted average over ALL bin midpoints
+        (sum_i P(bin_i) * midpoint_i), using the tree's full 'distributed' output as an
+        implicit soft regression estimate instead of collapsing it to one class first
+    both compared against each sample's true bin midpoint.
+    """
+    tree = tree.to(device)
+    tree.eval()
+
+    bin_edges = test_loader.dataset.bin_edges
+    ages = test_loader.dataset.data['age'].astype(float).values
+    midpoints = _bin_midpoints(bin_edges, ages).to(device)
+
+    total_hard_error = 0.
+    total_soft_error = 0.
+    total_samples = 0
+
+    for xs, ys in test_loader:
+        xs, ys = xs.to(device), ys.to(device)
+        ys_pred, _ = tree.forward(xs, sampling_strategy='distributed')
+
+        true_age = midpoints[ys]
+        hard_pred_age = midpoints[torch.argmax(ys_pred, dim=1)]
+        soft_pred_age = torch.sum(ys_pred * midpoints.view(1, -1), dim=1)
+
+        total_hard_error += torch.sum(torch.abs(hard_pred_age - true_age)).item()
+        total_soft_error += torch.sum(torch.abs(soft_pred_age - true_age)).item()
+        total_samples += xs.size(0)
+
+    info = {'hard_mae': total_hard_error / total_samples, 'soft_mae': total_soft_error / total_samples}
+    if log is not None:
+        log.log_message("Hard MAE: %s years, Soft MAE: %s years" % (str(info['hard_mae']), str(info['soft_mae'])))
+    return info
+
 @torch.no_grad()
 def eval_fidelity(tree: ProtoTree,
         test_loader: DataLoader,

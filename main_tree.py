@@ -9,7 +9,7 @@ from util.visualize import gen_vis
 from util.analyse import *
 from util.save import *
 from prototree.train import train_epoch, train_epoch_kontschieder
-from prototree.test import eval, eval_fidelity
+from prototree.test import eval, eval_fidelity, eval_mae
 from prototree.prune import prune
 from prototree.project import project, project_with_class_constraints
 from prototree.upsample import upsample
@@ -102,7 +102,11 @@ def run_tree(args=None):
                     original_test_acc = eval_info['test_accuracy']
                     best_valid_acc = save_best_valid_tree(tree, optimizer, scheduler, best_valid_acc, eval_info['test_accuracy'], log)
                     log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], train_info['train_accuracy'], train_info['loss'])
-                    print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}, test_acc={eval_info['test_accuracy']:.4f}", flush=True)
+                    mae_str = ""
+                    if args.dataset == 'face_dataset':
+                        mae_info = eval_mae(tree, testloader, device, log)
+                        mae_str = f", hard_mae={mae_info['hard_mae']:.2f}yr, soft_mae={mae_info['soft_mae']:.2f}yr"
+                    print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}, test_acc={eval_info['test_accuracy']:.4f}{mae_str}", flush=True)
                 else:
                     log.log_values('log_epoch_overview', epoch, "n.a.", train_info['train_accuracy'], train_info['loss'])
                     print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}", flush=True)
@@ -111,7 +115,11 @@ def run_tree(args=None):
                 original_test_acc = eval_info['test_accuracy']
                 best_valid_acc = save_best_valid_tree(tree, optimizer, scheduler, best_valid_acc, eval_info['test_accuracy'], log)
                 log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], train_info['train_accuracy'], train_info['loss'])
-                print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}, test_acc={eval_info['test_accuracy']:.4f}", flush=True)
+                mae_str = ""
+                if args.dataset == 'face_dataset':
+                    mae_info = eval_mae(tree, testloader, device, log)
+                    mae_str = f", hard_mae={mae_info['hard_mae']:.2f}yr, soft_mae={mae_info['soft_mae']:.2f}yr"
+                print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}, test_acc={eval_info['test_accuracy']:.4f}{mae_str}", flush=True)
 
             scheduler.step()
 
