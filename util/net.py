@@ -66,8 +66,9 @@ def get_network(num_in_channels: int, args: argparse.Namespace):
     
     add_on_layers = nn.Sequential(
                     nn.Conv2d(in_channels=first_add_on_layer_in_channels, out_channels=args.num_features, kernel_size=1, bias=False),
-                    nn.Sigmoid()
-                    ) 
+                    nn.Sigmoid(),
+                    nn.Dropout2d(p=args.dropout)
+                    )
     return features, add_on_layers
 
 def freeze(tree: ProtoTree, epoch: int, params_to_freeze: list, params_to_train: list, args: argparse.Namespace, log: Log):

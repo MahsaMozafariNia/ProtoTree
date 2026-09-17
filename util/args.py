@@ -93,6 +93,10 @@ def get_args() -> argparse.Namespace:
                         type=int,
                         default = 256,
                         help='Depth of the prototype and therefore also depth of convolutional output')
+    parser.add_argument('--dropout',
+                        type=float,
+                        default=0.2,
+                        help='Dropout2d probability applied to the add-on layer output (the 1x1-conv features prototypes are compared against). Randomly zeroes whole feature channels during training to reduce overfitting. 0 disables it.')
     parser.add_argument('--prototype_temp',
                         type=float,
                         default=1.0,
