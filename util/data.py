@@ -189,7 +189,9 @@ def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, 
         normalize,
     ])
 
-    num_bins = 2 ** args.depth
+    # --double_leaves halves the number of classes (bins) relative to the number of leaves
+    # (2^depth), so every bin is reachable through two independent leaves/routing paths.
+    num_bins = 2 ** (args.depth - 1) if args.double_leaves else 2 ** args.depth
     train_ages = pd.read_csv(csv_file_train)['age'].astype(float).values
     if args.bin_strategy == 'quantile':
         # Percentile edges of the training ages, so each bin holds roughly num_train/num_bins
@@ -201,7 +203,8 @@ def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, 
             # Integer ages create duplicate percentile edges at fine enough resolution. The
             # model doesn't require num_classes == num_leaves, so proceed with fewer, wider
             # bins rather than erroring out.
-            print(f"face_dataset: requested {num_bins} quantile bins (2^depth) but the training "
+            bins_formula = "2^(depth-1)" if args.double_leaves else "2^depth"
+            print(f"face_dataset: requested {num_bins} quantile bins ({bins_formula}) but the training "
                   f"ages only support {len(bin_edges) - 1} distinct ones (too many ties); "
                   f"using {len(bin_edges) - 1} classes instead.", flush=True)
     else:

@@ -14,6 +14,7 @@ from prototree.prune import prune
 from prototree.project import project, project_with_class_constraints
 from prototree.upsample import upsample
 
+import os
 import random
 import numpy as np
 import torch
@@ -34,8 +35,9 @@ def run_tree(args=None):
     args.log_dir = get_run_log_dir(args.log_dir)
     log = Log(args.log_dir)
     print("Log dir: ", args.log_dir, flush=True)
-    # Create a csv log for storing the test accuracy, mean train accuracy and mean loss for each epoch
-    log.create_log('log_epoch_overview', 'epoch', 'test_acc', 'mean_train_acc', 'mean_train_crossentropy_loss_during_epoch')
+    # Create a csv log for storing the validation accuracy/MAE, mean train accuracy and mean loss for each epoch
+    # ("val" here is the test set, doubling as the held-out signal used to pick the best checkpoint -- see below)
+    log.create_log('log_epoch_overview', 'epoch', 'val_acc', 'mean_train_acc', 'mean_train_crossentropy_loss_during_epoch', 'val_hard_mae', 'val_soft_mae')
     # Log the run arguments
     save_args(args, log.metadata_dir)
     print("Args:", flush=True)
@@ -110,14 +112,16 @@ def run_tree(args=None):
                 eval_info = eval(tree, testloader, epoch, device, log)
                 original_test_acc = eval_info['test_accuracy']
                 best_valid_acc = save_best_valid_tree(tree, optimizer, scheduler, best_valid_acc, eval_info['test_accuracy'], log)
-                log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], train_info['train_accuracy'], train_info['loss'])
                 mae_str = ""
+                val_hard_mae, val_soft_mae = "n.a.", "n.a."
                 if args.dataset == 'face_dataset':
                     mae_info = eval_mae(tree, testloader, device, log)
-                    mae_str = f", hard_mae={mae_info['hard_mae']:.2f}yr, soft_mae={mae_info['soft_mae']:.2f}yr"
-                print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}, test_acc={eval_info['test_accuracy']:.4f}{mae_str}", flush=True)
+                    val_hard_mae, val_soft_mae = mae_info['hard_mae'], mae_info['soft_mae']
+                    mae_str = f", val_hard_mae={val_hard_mae:.2f}yr, val_soft_mae={val_soft_mae:.2f}yr"
+                log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], train_info['train_accuracy'], train_info['loss'], val_hard_mae, val_soft_mae)
+                print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}, val_acc={eval_info['test_accuracy']:.4f}{mae_str}", flush=True)
             else:
-                log.log_values('log_epoch_overview', epoch, "n.a.", train_info['train_accuracy'], train_info['loss'])
+                log.log_values('log_epoch_overview', epoch, "n.a.", train_info['train_accuracy'], train_info['loss'], "n.a.", "n.a.")
                 print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}", flush=True)
 
             scheduler.step()
@@ -129,7 +133,11 @@ def run_tree(args=None):
         eval_info = eval(tree, testloader, epoch, device, log)
         original_test_acc = eval_info['test_accuracy']
         best_valid_acc = save_best_valid_tree(tree, optimizer, scheduler, best_valid_acc, eval_info['test_accuracy'], log)
-        log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], "n.a.", "n.a.")
+        val_hard_mae, val_soft_mae = "n.a.", "n.a."
+        if args.dataset == 'face_dataset':
+            mae_info = eval_mae(tree, testloader, device, log)
+            val_hard_mae, val_soft_mae = mae_info['hard_mae'], mae_info['soft_mae']
+        log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], "n.a.", "n.a.", val_hard_mae, val_soft_mae)
 
     '''
         EVALUATE AND ANALYSE TRAINED TREE
@@ -138,7 +146,20 @@ def run_tree(args=None):
     trained_tree = deepcopy(tree)
     leaf_labels = analyse_leafs(tree, epoch+1, len(classes), leaf_labels, args.pruning_threshold_leaves, log)
     analyse_leaf_distributions(tree, log)
-    
+
+    '''
+        LOAD BEST VALID MODEL BEFORE PRUNING
+    '''
+    # Prune/project the checkpoint that scored best on the validation signal during training,
+    # rather than whatever the last epoch happened to land on.
+    best_valid_model_path = f'{log.checkpoint_dir}/best_valid_model/model.pth'
+    if os.path.isfile(best_valid_model_path):
+        log.log_message(f"Loading best valid model (val_acc={best_valid_acc}) from {best_valid_model_path} for pruning")
+        tree = torch.load(best_valid_model_path, map_location=device)
+        tree = tree.to(device=device)
+    else:
+        log.log_message("No best_valid_model checkpoint found; pruning the last-epoch tree instead")
+
     '''
         PRUNE
     '''
