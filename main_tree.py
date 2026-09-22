@@ -85,6 +85,26 @@ def run_tree(args=None):
     best_valid_acc = 0.
     half_epoch = args.epochs // 2
 
+
+    print("Delta Requires grad:", tree.prototype_margin.requires_grad)
+    for group in optimizer.param_groups:
+        for p in group["params"]:
+            if p is tree.prototype_margin:
+                print("Found delta in optimizer")
+
+
+    with torch.no_grad():
+        if args.delta_initialized_value == 0:
+            xs0, _, _, _ = next(iter(trainloader))
+            _, info = tree.forward(xs0.to(device))
+            mean_d = info['min_distances'].mean(dim=0)  # (P,)
+            tree.prototype_margin.copy_(mean_d.detach())
+            del info
+        else:
+            tree.prototype_margin.copy_(torch.full_like(tree.prototype_margin, args.delta_initialized_value))
+        
+    torch.cuda.empty_cache()
+
     if epoch < args.epochs + 1:
         '''
             TRAIN AND EVALUATE TREE
