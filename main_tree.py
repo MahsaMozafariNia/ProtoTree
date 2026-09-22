@@ -114,7 +114,22 @@ def run_tree(args=None):
             # Freeze (part of) network for some epochs if indicated in args
             freeze(tree, epoch, params_to_freeze, params_to_train, args, log)
             update_temperature(tree, epoch, args, log)
+            print(f"Temp is {tree.prototype_temp:.5f}")
+            
             log_learning_rates(optimizer, args, log)
+
+
+            delta_vals = tree.prototype_margin.detach() 
+            delta_vals = F.relu(delta_vals - 0.0001) + 0.0001   # this is margin used for routing decision in similarity function
+            # Print summary statistics
+            print(
+                "\nMargin statistics:",
+                f"min={delta_vals.min().item():.4f}",
+                f"max={delta_vals.max().item():.4f}",
+                f"mean={delta_vals.mean().item():.4f}",
+                f"std={delta_vals.std().item():.4f}",
+            )        
+            print(" delta requires_grad:", tree.prototype_margin.requires_grad)
 
             # Train tree
             if tree._kontschieder_train:
