@@ -96,7 +96,7 @@ def run_tree(args=None):
     was_training = tree.training
     tree.eval()
     with torch.no_grad():
-        xs0, _, _, _  = next(iter(trainloader))
+        xs0, _ = next(iter(trainloader))
         _, info = tree.forward(xs0.to(device))
         mean_d = info['min_distances'].mean(dim=0)  # (P,)
         tree.prototype_margin.copy_(mean_d.detach())
