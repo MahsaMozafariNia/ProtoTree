@@ -30,7 +30,7 @@ def run_ensemble():
         os.mkdir(os.path.join(all_args.log_dir, "files")) 
 
     # Obtain the data loaders
-    trainloader, projectloader, test_loader, classes, num_channels = get_dataloaders(all_args)
+    trainloader, projectloader, validloader, test_loader, classes, num_channels = get_dataloaders(all_args)
 
     log_dir_orig = all_args.log_dir
 

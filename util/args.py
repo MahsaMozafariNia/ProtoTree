@@ -45,6 +45,10 @@ def get_args() -> argparse.Namespace:
                         type=int,
                         default=64,
                         help='Batch size when training the model using minibatch gradient descent')
+    parser.add_argument('--num_workers',
+                        type=int,
+                        default=2,
+                        help='Number of DataLoader worker subprocesses. 0 loads in the main process.')
     parser.add_argument('--depth',
                         type=int,
                         default=9,

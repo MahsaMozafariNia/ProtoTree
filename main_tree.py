@@ -36,7 +36,8 @@ def run_tree(args=None):
     log = Log(args.log_dir)
     print("Log dir: ", args.log_dir, flush=True)
     # Create a csv log for storing the validation accuracy/MAE, mean train accuracy and mean loss for each epoch
-    # ("val" here is the test set, doubling as the held-out signal used to pick the best checkpoint -- see below)
+    # ("val" here is the held-out validation set, used to pick the best checkpoint -- see below.
+    # The test set is never touched during training, only for the final reported numbers.)
     log.create_log('log_epoch_overview', 'epoch', 'val_acc', 'mean_train_acc', 'mean_train_crossentropy_loss_during_epoch', 'val_hard_mae', 'val_soft_mae')
     # Log the run arguments
     save_args(args, log.metadata_dir)
@@ -58,7 +59,7 @@ def run_tree(args=None):
     log.create_log(log_loss, 'epoch', 'batch', 'loss', 'batch_train_acc')
 
     # Obtain the dataset and dataloaders
-    trainloader, projectloader, testloader, classes, num_channels = get_dataloaders(args)
+    trainloader, projectloader, validloader, testloader, classes, num_channels = get_dataloaders(args)
     print('data is loaded', flush=True)
     # Create a convolutional network based on arguments and add 1x1 conv layer
     features_net, add_on_layers = get_network(num_channels, args)
@@ -80,8 +81,8 @@ def run_tree(args=None):
 
     leaf_labels = dict()
     best_train_acc = 0.
-    # No separate held-out validation split exists in this pipeline, so the test set doubles
-    # as the validation signal used to pick the "best" checkpoint during training.
+    # Checkpoint selection during training is driven by validloader (a held-out split distinct
+    # from both train and test). testloader is only evaluated once, after training finishes.
     best_valid_acc = 0.
     half_epoch = args.epochs // 2
 
@@ -127,11 +128,12 @@ def run_tree(args=None):
                 save_half_epoch(tree, optimizer, scheduler, log)
             leaf_labels = analyse_leafs(tree, epoch, len(classes), leaf_labels, args.pruning_threshold_leaves, log)
 
-            # Evaluate tree every 5 epochs (and always on the last one), regardless of --epochs
-            if epoch % 5 == 0 or epoch == args.epochs:
+            # Evaluate tree on the validation set every 10 epochs (and always on the last one),
+            # regardless of --epochs. testloader is intentionally not touched here.
+            if epoch % 10 == 0 or epoch == args.epochs:
 
                 print(f"Temp is {tree.prototype_temp:.5f}")
-                delta_vals = tree.prototype_margin.detach() 
+                delta_vals = tree.prototype_margin.detach()
                 delta_vals = F.relu(delta_vals - 0.0001) + 0.0001   # this is margin used for routing decision in similarity function
                 # Print summary statistics
                 print(
@@ -140,17 +142,16 @@ def run_tree(args=None):
                     f"max={delta_vals.max().item():.4f}",
                     f"mean={delta_vals.mean().item():.4f}",
                     f"std={delta_vals.std().item():.4f}",
-                )        
+                )
                 print(" delta requires_grad:", tree.prototype_margin.requires_grad)
 
-                
-                eval_info = eval(tree, testloader, epoch, device, log)
-                original_test_acc = eval_info['test_accuracy']
+
+                eval_info = eval(tree, validloader, epoch, device, log)
                 best_valid_acc = save_best_valid_tree(tree, optimizer, scheduler, best_valid_acc, eval_info['test_accuracy'], log)
                 mae_str = ""
                 val_hard_mae, val_soft_mae = "n.a.", "n.a."
                 if args.dataset == 'face_dataset':
-                    mae_info = eval_mae(tree, testloader, device, log)
+                    mae_info = eval_mae(tree, validloader, device, log)
                     val_hard_mae, val_soft_mae = mae_info['hard_mae'], mae_info['soft_mae']
                     mae_str = f", val_hard_mae={val_hard_mae:.2f}yr, val_soft_mae={val_soft_mae:.2f}yr"
                 log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], train_info['train_accuracy'], train_info['loss'], val_hard_mae, val_soft_mae)
@@ -160,6 +161,16 @@ def run_tree(args=None):
                 print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}", flush=True)
 
             scheduler.step()
+
+        # Training is finished -- now, and only now, evaluate the trained tree on the held-out
+        # test set (never used for checkpoint selection above) to get the final reported numbers.
+        eval_info = eval(tree, testloader, "trained", device, log)
+        original_test_acc = eval_info['test_accuracy']
+        test_mae_str = ""
+        if args.dataset == 'face_dataset':
+            mae_info = eval_mae(tree, testloader, device, log)
+            test_mae_str = f", test_hard_mae={mae_info['hard_mae']:.2f}yr, test_soft_mae={mae_info['soft_mae']:.2f}yr"
+        log.log_message(f"Trained tree test accuracy: {original_test_acc}{test_mae_str}")
 
     else: #tree was loaded and not trained, so evaluate only
         '''
