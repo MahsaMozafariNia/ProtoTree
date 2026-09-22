@@ -292,7 +292,7 @@ def get_optimizer(tree, args: argparse.Namespace) -> torch.optim.Optimizer:
             {"params": [tree.prototype_margin], "lr": args.lr_delta, "weight_decay": args.prototype_weight_decay}]
 
         if args.disable_derivative_free_leaf_optim:
-            paramlist.append({"params": dist_params, "lr": args.lr_pi, "weight_decay_rate": 0})
+            paramlist.append({"params": dist_params, "lr": args.lr_pi, "weight_decay": 0})
     
     if optim_type == 'SGD':
         return torch.optim.SGD(paramlist,
