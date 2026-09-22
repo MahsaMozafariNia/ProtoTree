@@ -128,6 +128,26 @@ def run_tree(args=None):
                 save_half_epoch(tree, optimizer, scheduler, log)
             leaf_labels = analyse_leafs(tree, epoch, len(classes), leaf_labels, args.pruning_threshold_leaves, log)
 
+            # Every 5 epochs, print how confident the leaf distributions are and which classes the
+            # tree can predict at all (a class that is no leaf's argmax gets ~0 probability everywhere)
+            if epoch % 5 == 0:
+                with torch.no_grad():
+                    leaf_dists = [leaf.distribution().detach() for leaf in tree.leaves]
+                    if tree._log_probabilities:
+                        leaf_dists = [d.exp() for d in leaf_dists]
+                    leaf_entropy = np.mean([-(d * d.clamp_min(1e-12).log()).sum().item() for d in leaf_dists])
+                    leaf_maxp = np.mean([d.max().item() for d in leaf_dists])
+                    leaf_mass = np.mean([leaf._dist_params.detach().sum().item() for leaf in tree.leaves])
+                    leaf_classes = sorted(int(d.argmax()) for d in leaf_dists)
+                    reachable = sorted(set(leaf_classes))
+                print('-' * 80)
+                print(f"Epoch {epoch} leaf stats: mean entropy={leaf_entropy:.4f} (max possible {np.log(len(classes)):.4f}), "
+                      f"mean max prob={leaf_maxp:.4f}, mean leaf mass={leaf_mass:.1f}")
+                print(f"  leaf argmax classes: {[classes[c] for c in leaf_classes]}")
+                print(f"  reachable classes: {len(reachable)}/{len(classes)}, "
+                      f"unreachable: {[classes[c] for c in range(len(classes)) if c not in reachable]}")
+                print('-' * 80, flush=True)
+
             # Evaluate tree on the validation set every 10 epochs (and always on the last one),
             # regardless of --epochs. testloader is intentionally not touched here.
             if epoch % 10 == 0 or epoch == args.epochs:
