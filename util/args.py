@@ -81,6 +81,10 @@ def get_args() -> argparse.Namespace:
                         type=float,
                         default=0.0,
                         help='Weight decay used in the optimizer')
+    parser.add_argument('--prototype_weight_decay',
+                            type=float,
+                            default=0.0,
+                            help='Weight decay used for the prototype parameters')
     parser.add_argument('--disable_cuda',
                         action='store_true',
                         help='Flag that disables GPU usage if set')
@@ -177,6 +181,7 @@ def get_args() -> argparse.Namespace:
                         type=int,
                         default=5,
                         help='Number of ProtoTrees to train and (optionally) use in an ensemble. Used in main_ensemble.py') 
+    parser.add_argument('--lr_delta', type=float, default=1e-1, help='Learning rate for prototype margin (delta)')
     args = parser.parse_args()
     args.milestones = get_milestones(args)
     return args
@@ -279,7 +284,7 @@ def get_optimizer(tree, args: argparse.Namespace) -> torch.optim.Optimizer:
         paramlist = [
             {"params": params_to_freeze, "lr": args.lr_net, "weight_decay_rate": args.weight_decay}, 
             {"params": tree._add_on.parameters(), "lr": args.lr_block, "weight_decay_rate": args.weight_decay},
-            {"params": tree.prototype_layer.parameters(), "lr": args.lr,"weight_decay_rate": args.weight_decay},
+            {"params": tree.prototype_layer.parameters(), "lr": args.lr,"weight_decay_rate": args.prototype_weight_decay},
             {"params": [tree.prototype_margin], "lr": args.lr_delta, "weight_decay": args.weight_decay}]
 
         if args.disable_derivative_free_leaf_optim:
