@@ -167,7 +167,7 @@ class ProtoTree(nn.Module):
         info['pa_tensor'] = {n.index: attr[n, 'pa'].unsqueeze(1) for n in self.nodes}
         # Store the output probabilities of all decision nodes in the tree
         info['ps'] = {n.index: attr[n, 'ps'].unsqueeze(1) for n in self.branches}
-
+        info['min_distances'] = min_distances
         # Generate the output based on the chosen sampling strategy
         if sampling_strategy == ProtoTree.SAMPLING_STRATEGIES[0]:  # Distributed
             return out, info
