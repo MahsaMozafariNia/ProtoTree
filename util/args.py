@@ -34,6 +34,15 @@ def get_args() -> argparse.Namespace:
                         default='equal_width',
                         choices=['equal_width', 'quantile'],
                         help="How --dataset face_dataset turns age into 2^depth classes. 'equal_width': bins of max_age/2^depth years each (simple, but bin sizes can be very imbalanced -- e.g. UTKFace's 25-30 bin has ~14x more samples than its 70-75 bin). 'quantile': bin edges are percentiles of the training ages, so every bin has roughly the same number of samples (bin widths vary instead).")
+    parser.add_argument('--label_noise',
+                        type=float,
+                        default=0.0,
+                        help="face_dataset only: years of random noise added to each TRAINING sample's age before it is binned into a class, redrawn every time the sample is loaded (target-side augmentation against overfitting). 0 disables it. Validation/test/projection labels are never noised.")
+    parser.add_argument('--label_noise_type',
+                        type=str,
+                        default='gaussian',
+                        choices=['gaussian', 'uniform'],
+                        help="Distribution of --label_noise: 'gaussian' = normal with std of --label_noise years; 'uniform' = uniform in [-label_noise, +label_noise] years.")
     parser.add_argument('--double_leaves',
                         action='store_true',
                         help="For --dataset face_dataset: use 2^(depth-1) age bins/classes instead of 2^depth, while the tree still has the full 2^depth leaves for --depth. E.g. depth=5 normally means 32 bins for 32 leaves; with this flag it's 16 bins for 32 leaves, so every bin can be reached through two independent leaves/routing paths instead of one.")

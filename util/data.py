@@ -175,11 +175,17 @@ class UTKFaceBinned(torch.utils.data.Dataset):
     equal-width age bins, so ProtoTree's classification pipeline can be used unchanged.
     """
 
-    def __init__(self, root_dir: str, csv_file: str, bin_edges: np.ndarray, transform):
+    def __init__(self, root_dir: str, csv_file: str, bin_edges: np.ndarray, transform,
+                 label_noise: float = 0.0, noise_type: str = 'gaussian'):
         self.root_dir = root_dir
         self.data = pd.read_csv(csv_file)
         self.bin_edges = bin_edges
         self.transform = transform
+        # Target-side augmentation (training set only): jitter the age by up to `label_noise`
+        # years before binning, freshly each time a sample is fetched, so a face near a bin
+        # boundary gets a different (adjacent) label across epochs instead of one memorizable label.
+        self.label_noise = label_noise
+        self.noise_type = noise_type
         # ImageFolder-style (path, label) list, in row order (matches the unshuffled
         # projectloader), for code that expects torchvision.datasets.ImageFolder's .imgs
         # (e.g. prototree/upsample.py indexing project_loader.dataset.imgs[i]).
@@ -197,7 +203,13 @@ class UTKFaceBinned(torch.utils.data.Dataset):
         row = self.data.iloc[idx]
         image = Image.open(os.path.join(self.root_dir, row['image_name'])).convert('RGB')
         image = self.transform(image)
-        return image, self._label(row['age'])
+        age = float(row['age'])
+        if self.label_noise > 0:
+            if self.noise_type == 'uniform':
+                age += np.random.uniform(-self.label_noise, self.label_noise)
+            else:  # gaussian, std = label_noise years
+                age += np.random.normal(0.0, self.label_noise)
+        return image, self._label(age)
 
 
 def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, csv_file_valid: str, csv_file_test: str, img_size=224):
@@ -247,7 +259,8 @@ def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, 
         bin_edges = np.array([i * bin_width for i in range(num_bins + 1)], dtype=float)
     bin_edges[0], bin_edges[-1] = -np.inf, np.inf
 
-    trainset = UTKFaceBinned(data_root, csv_file_train, bin_edges, transform)
+    trainset = UTKFaceBinned(data_root, csv_file_train, bin_edges, transform,
+                             label_noise=args.label_noise, noise_type=args.label_noise_type)
     projectset = UTKFaceBinned(data_root, csv_file_project, bin_edges, transform_no_augment)
     validset = UTKFaceBinned(data_root, csv_file_valid, bin_edges, transform_no_augment)
     testset = UTKFaceBinned(data_root, csv_file_test, bin_edges, transform_no_augment)
