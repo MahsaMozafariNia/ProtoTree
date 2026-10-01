@@ -82,12 +82,43 @@ def freeze(tree: ProtoTree, epoch: int, params_to_freeze: list, params_to_train:
             for parameter in params_to_freeze:
                 parameter.requires_grad = True
 
+def _get_annealed_value(start_val: float, end_val: float, epoch: int, args: argparse.Namespace) -> float:
+    """Geometric interpolation from start_val to end_val between anneal_start_frac and anneal_end_frac epochs."""
+    a_start = 0 if getattr(args, 'temp_drop', False) else max(1, int(round(args.anneal_start_frac * args.epochs)))
+    a_end   = max(a_start + 1, int(round(args.anneal_end_frac * args.epochs)))
+    if epoch <= a_start:
+        return start_val
+    elif epoch >= a_end:
+        return end_val
+    else:
+        frac = (epoch - a_start) / float(a_end - a_start)
+        return start_val * (end_val / start_val) ** frac
+
+
 def update_temperature(tree: ProtoTree, epoch: int, args: argparse.Namespace, log: Log):
     """
-    Drops tree.prototype_temp from args.prototype_temp to args.target_temp once epoch reaches
-    args.temp_start_epoch (a step, not a gradual anneal). No-op if --temp_start_epoch is -1 (default).
+    Geometric temperature schedule matching the Gaussian Regression Tree reference.
+    Holds prototype_temp until a_start, decays smoothly to target_temp by a_end, then holds.
+    Falls back to a single step-drop at temp_start_epoch if anneal_start_frac is not set.
     """
-    if args.temp_start_epoch >= 0 and epoch == args.temp_start_epoch:
+    if hasattr(args, 'anneal_start_frac') and args.anneal_start_frac >= 0:
+        desired_temp = _get_annealed_value(args.prototype_temp, args.target_temp, epoch, args)
+        if abs(desired_temp - tree.prototype_temp) > 1e-12:
+            log.log_message(f"\nprototype_temp {tree.prototype_temp:.5f} -> {desired_temp:.5f}")
+        tree.prototype_temp = desired_temp
+    elif args.temp_start_epoch >= 0 and epoch == args.temp_start_epoch:
         tree.prototype_temp = args.target_temp
         log.log_message("\nprototype_temp dropped from %s to target_temp=%s"%(str(args.prototype_temp), str(args.target_temp)))
+
+
+def get_label_smoothing(epoch: int, args: argparse.Namespace) -> float:
+    """Anneals label_smoothing from args.label_smoothing down to args.label_smoothing_end.
+    Uses the same anneal_start_frac/anneal_end_frac schedule as temperature.
+    Falls back to static args.label_smoothing if label_smoothing_end is not set or anneal_start_frac < 0.
+    """
+    start = getattr(args, 'label_smoothing', 0.0)
+    end   = getattr(args, 'label_smoothing_end', -1.0)
+    if end < 0 or not (hasattr(args, 'anneal_start_frac') and args.anneal_start_frac >= 0):
+        return start
+    return _get_annealed_value(start, end, epoch, args)
 

@@ -114,6 +114,47 @@ def eval_mae(tree: ProtoTree,
     return info
 
 @torch.no_grad()
+def eval_mae_pose(tree: ProtoTree,
+        test_loader: DataLoader,
+        device,
+        log: Log = None
+        ) -> dict:
+    """
+    Head-pose MAE for --dataset head_pose_dataset: converts bin predictions back to
+    degrees using Hopenet's fixed bin centers (3*i - 97.5 for i=0..65), then reports
+      - hard_mae: degrees error when taking argmax leaf bin
+      - soft_mae: degrees error from probability-weighted expectation over all bins
+    both compared against the true bin center of each sample's yaw label.
+    """
+    tree = tree.to(device)
+    tree.eval()
+
+    # Hopenet bin centers: bin i covers [3i-99, 3i-96), center = 3i - 97.5
+    bin_centers = torch.tensor([3.0 * i - 97.5 for i in range(66)], dtype=torch.float32).to(device)
+
+    total_hard_error = 0.
+    total_soft_error = 0.
+    total_samples = 0
+
+    for xs, ys in test_loader:
+        xs, ys = xs.to(device), ys.to(device)
+        ys_pred, _ = tree.forward(xs, sampling_strategy='distributed')
+
+        true_deg = bin_centers[ys]
+        hard_pred_deg = bin_centers[torch.argmax(ys_pred, dim=1)]
+        soft_pred_deg = torch.sum(ys_pred * bin_centers.view(1, -1), dim=1)
+
+        total_hard_error += torch.sum(torch.abs(hard_pred_deg - true_deg)).item()
+        total_soft_error += torch.sum(torch.abs(soft_pred_deg - true_deg)).item()
+        total_samples += xs.size(0)
+
+    info = {'hard_mae': total_hard_error / total_samples, 'soft_mae': total_soft_error / total_samples}
+    if log is not None:
+        log.log_message("Pose Hard MAE: %.2f deg, Soft MAE: %.2f deg" % (info['hard_mae'], info['soft_mae']))
+    return info
+
+
+@torch.no_grad()
 def eval_fidelity(tree: ProtoTree,
         test_loader: DataLoader,
         device,

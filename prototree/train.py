@@ -18,7 +18,8 @@ def train_epoch(tree: ProtoTree,
                 device,
                 log: Log = None,
                 log_prefix: str = 'log_train_epochs',
-                progress_prefix: str = 'Train Epoch'
+                progress_prefix: str = 'Train Epoch',
+                label_smoothing: float = 0.0
                 ) -> dict:
     
     tree = tree.to(device)
@@ -37,7 +38,12 @@ def train_epoch(tree: ProtoTree,
         for leaf in tree.leaves:
             _old_dist_params[leaf] = leaf._dist_params.detach().clone()
         # Optimize class distributions in leafs
-        eye = torch.eye(tree._num_classes).to(device)
+        if label_smoothing > 0.0:
+            k = torch.arange(tree._num_classes, dtype=torch.float32, device=device)
+            eye = torch.exp(-0.5 * ((k.unsqueeze(0) - k.unsqueeze(1)) / label_smoothing) ** 2)
+            eye = eye / eye.sum(dim=1, keepdim=True)
+        else:
+            eye = torch.eye(tree._num_classes).to(device)
 
     # Iterate through the data set to update leaves, prototypes and network
     for i, (xs, ys) in enumerate(train_loader):

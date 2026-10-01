@@ -11,6 +11,7 @@ from torchvision.transforms import ToTensor, Normalize, Compose, Lambda
 import pandas as pd
 import random
 from PIL import Image
+import scipy.io
 
 
 def get_data(args: argparse.Namespace):
@@ -41,6 +42,8 @@ def get_data(args: argparse.Namespace):
                          f'{csv_dir}/train_set.csv',
                          f'{csv_dir}/valid_set.csv',
                          f'{csv_dir}/test_set.csv')
+    if args.dataset == 'head_pose_dataset':
+        return get_head_pose(args.pose_data_dir, args.aflw_data_dir, train_subset=args.train_subset)
     raise Exception(f'Could not load data set "{args.dataset}"!')
 
 def seed_worker(worker_id):
@@ -263,3 +266,134 @@ def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, 
 
     return trainset, projectset, validset, testset, classes, shape
 
+
+# ---------------------------------------------------------------------------
+# Head pose dataset (300W-LP train / AFLW2000 test)
+# ---------------------------------------------------------------------------
+
+def _yaw_from_mat(mat_path: str) -> float:
+    mat = scipy.io.loadmat(mat_path)
+    pose_para = mat['Pose_Para'][0]   # [pitch, yaw, roll, ...]
+    return float(pose_para[1]) * 180.0 / np.pi
+
+
+def _yaw_to_bin(yaw_deg: float) -> int:
+    # Hopenet's 66-bin scheme: bin i covers [3i-99, 3i-96) degrees
+    b = int((yaw_deg + 99.0) / 3.0)
+    return max(0, min(65, b))
+
+
+class Pose300WLPBinned(torch.utils.data.Dataset):
+    """300W-LP images binned by yaw angle into 66 Hopenet-style classes."""
+
+    def __init__(self, data_dir: str, transform, val_split: bool = False, val_fraction: float = 0.1, seed: int = 1, train_subset: float = 1.0):
+        self.data_dir = data_dir
+        self.transform = transform
+
+        # Scan all available subfolders for jpg+mat pairs
+        samples = []
+        subfolders = sorted([
+            d for d in os.listdir(data_dir)
+            if os.path.isdir(os.path.join(data_dir, d)) and d != 'Code'
+        ])
+        for folder in subfolders:
+            folder_path = os.path.join(data_dir, folder)
+            for fname in os.listdir(folder_path):
+                if not fname.endswith('.jpg'):
+                    continue
+                stem = os.path.splitext(fname)[0]
+                mat_path = os.path.join(folder_path, stem + '.mat')
+                if os.path.exists(mat_path):
+                    samples.append((os.path.join(folder_path, fname), mat_path))
+
+        # Deterministic train/val split
+        rng = random.Random(seed)
+        samples_sorted = sorted(samples)
+        rng.shuffle(samples_sorted)
+        n_val = int(len(samples_sorted) * val_fraction)
+        if val_split:
+            samples_sorted = samples_sorted[:n_val]
+        else:
+            samples_sorted = samples_sorted[n_val:]
+            if train_subset < 1.0:
+                samples_sorted = samples_sorted[:max(1, int(len(samples_sorted) * train_subset))]
+
+        self.samples = samples_sorted
+        # Build (img_path, label) pairs in parallel — reading ~58k .mat files sequentially
+        # on NFS would take many minutes; a thread pool keeps it under a minute.
+        from concurrent.futures import ThreadPoolExecutor
+        def _label_pair(item):
+            img_path, mat_path = item
+            return (img_path, _yaw_to_bin(_yaw_from_mat(mat_path)))
+        with ThreadPoolExecutor(max_workers=32) as ex:
+            self.imgs = list(ex.map(_label_pair, self.samples))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        img_path, label = self.imgs[idx]
+        image = Image.open(img_path).convert('RGB')
+        image = self.transform(image)
+        return image, label
+
+
+class AFLW2000Binned(torch.utils.data.Dataset):
+    """AFLW2000 images binned by yaw angle, used as test/val set."""
+
+    def __init__(self, data_dir: str, transform):
+        self.data_dir = data_dir
+        self.transform = transform
+        self.samples = []
+        for fname in sorted(os.listdir(data_dir)):
+            if not fname.endswith('.jpg'):
+                continue
+            stem = os.path.splitext(fname)[0]
+            mat_path = os.path.join(data_dir, stem + '.mat')
+            if os.path.exists(mat_path):
+                self.samples.append((os.path.join(data_dir, fname), mat_path))
+        # AFLW2000 is ~2000 samples — sequential read is fast enough
+        self.imgs = [(img_path, _yaw_to_bin(_yaw_from_mat(mat_path)))
+                     for img_path, mat_path in self.samples]
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        img_path, label = self.imgs[idx]
+        image = Image.open(img_path).convert('RGB')
+        image = self.transform(image)
+        return image, label
+
+
+def get_head_pose(pose_data_dir: str, aflw_data_dir: str, img_size: int = 224, train_subset: float = 1.0):
+    shape = (3, img_size, img_size)
+    mean = (0.485, 0.456, 0.406)
+    std  = (0.229, 0.224, 0.225)
+    normalize = transforms.Normalize(mean=mean, std=std)
+
+    transform_train = transforms.Compose([
+        transforms.Resize(size=(img_size, img_size)),
+        transforms.RandomOrder([
+            transforms.RandomPerspective(distortion_scale=0.2, p=0.5),
+            transforms.ColorJitter((0.6, 1.4), (0.6, 1.4), (0.6, 1.4), (-0.02, 0.02)),
+            transforms.RandomAffine(degrees=0, shear=(-2, 2), translate=[0.05, 0.05]),
+        ]),
+        transforms.ToTensor(),
+        normalize,
+    ])
+    transform_eval = transforms.Compose([
+        transforms.Resize(size=(img_size, img_size)),
+        transforms.ToTensor(),
+        normalize,
+    ])
+
+    trainset   = Pose300WLPBinned(pose_data_dir, transform_train, val_split=False, train_subset=train_subset)
+    projectset = Pose300WLPBinned(pose_data_dir, transform_eval,  val_split=False, train_subset=train_subset)
+    validset   = AFLW2000Binned(aflw_data_dir, transform_eval)
+    testset    = AFLW2000Binned(aflw_data_dir, transform_eval)
+
+    # 66 class names matching Hopenet bin centers: -99, -96, ..., 96 degrees
+    classes = [f'{int(i * 3 - 99)}' for i in range(66)]
+
+    return trainset, projectset, validset, testset, classes, shape

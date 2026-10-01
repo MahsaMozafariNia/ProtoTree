@@ -20,7 +20,27 @@ def get_args() -> argparse.Namespace:
     parser.add_argument('--dataset',
                         type=str,
                         default='CUB-200-2011',
-                        help='Data set on which the ProtoTree should be trained. Options: CUB-200-2011, CARS, face_dataset')
+                        help='Data set on which the ProtoTree should be trained. Options: CUB-200-2011, CARS, face_dataset, head_pose_dataset')
+    parser.add_argument('--pose_data_dir',
+                        type=str,
+                        default='./data/300W_LP',
+                        help='Path to the 300W-LP directory (subfolders AFW, HELEN, etc.) for --dataset head_pose_dataset')
+    parser.add_argument('--aflw_data_dir',
+                        type=str,
+                        default='./data/AFLW2000',
+                        help='Path to the AFLW2000 directory used as test/val for --dataset head_pose_dataset')
+    parser.add_argument('--train_subset',
+                        type=float,
+                        default=1.0,
+                        help='Fraction of training data to use (0.0–1.0). E.g. 0.2 uses 20%% of 300W-LP for faster experiments.')
+    parser.add_argument('--label_smoothing',
+                        type=float,
+                        default=0.0,
+                        help='Ordinal label smoothing sigma in bins (0.0 = off). E.g. 1.5 spreads target probability to adjacent bins via a Gaussian.')
+    parser.add_argument('--label_smoothing_end',
+                        type=float,
+                        default=-1.0,
+                        help='Target sigma to anneal label_smoothing down to by anneal_end_frac. Uses the same schedule as temperature. -1 (default) disables annealing (static label_smoothing).')
     parser.add_argument('--face_csv_dir',
                         type=str,
                         default='./data/face_dataset',
@@ -123,7 +143,18 @@ def get_args() -> argparse.Namespace:
     parser.add_argument('--temp_start_epoch',
                         type=int,
                         default=-1,
-                        help='Epoch at which prototype_temp drops from --prototype_temp to --target_temp. -1 (default) disables annealing.')
+                        help='Epoch at which prototype_temp drops from --prototype_temp to --target_temp. -1 (default) disables annealing. Ignored when --anneal_start_frac >= 0.')
+    parser.add_argument('--anneal_start_frac',
+                        type=float,
+                        default=-1.0,
+                        help='Fraction of epochs to hold prototype_temp before annealing begins. E.g. 0.3 with 160 epochs = start at epoch 48. -1 (default) falls back to --temp_start_epoch.')
+    parser.add_argument('--anneal_end_frac',
+                        type=float,
+                        default=0.7,
+                        help='Fraction of epochs by which temperature reaches target_temp. E.g. 0.7 with 160 epochs = done by epoch 112.')
+    parser.add_argument('--temp_drop',
+                        action='store_true',
+                        help='If set, start temperature annealing from epoch 1 (overrides --anneal_start_frac).')
     parser.add_argument('--milestones',
                         type=str,
                         default='',

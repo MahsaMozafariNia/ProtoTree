@@ -4,12 +4,12 @@ from util.log import Log, get_run_log_dir
 from util.args import get_args, save_args, get_optimizer
 from util.data import get_dataloaders
 from util.init import init_tree
-from util.net import get_network, freeze, update_temperature
+from util.net import get_network, freeze, update_temperature, get_label_smoothing
 from util.visualize import gen_vis
 from util.analyse import *
 from util.save import *
 from prototree.train import train_epoch, train_epoch_kontschieder
-from prototree.test import eval, eval_fidelity, eval_mae
+from prototree.test import eval, eval_fidelity, eval_mae, eval_mae_pose
 from prototree.prune import prune
 from prototree.project import project, project_with_class_constraints
 from prototree.upsample import upsample
@@ -121,7 +121,7 @@ def run_tree(args=None):
             if tree._kontschieder_train:
                 train_info = train_epoch_kontschieder(tree, trainloader, optimizer, epoch, args.disable_derivative_free_leaf_optim, device, log, log_prefix)
             else:
-                train_info = train_epoch(tree, trainloader, optimizer, epoch, args.disable_derivative_free_leaf_optim, device, log, log_prefix)
+                train_info = train_epoch(tree, trainloader, optimizer, epoch, args.disable_derivative_free_leaf_optim, device, log, log_prefix, label_smoothing=get_label_smoothing(epoch, args))
             best_train_acc = max(best_train_acc, train_info['train_accuracy'])
             save_last_epoch(tree, optimizer, scheduler, log)
             if epoch == half_epoch:
@@ -154,6 +154,10 @@ def run_tree(args=None):
                     mae_info = eval_mae(tree, validloader, device, log)
                     val_hard_mae, val_soft_mae = mae_info['hard_mae'], mae_info['soft_mae']
                     mae_str = f", val_hard_mae={val_hard_mae:.2f}yr, val_soft_mae={val_soft_mae:.2f}yr"
+                elif args.dataset == 'head_pose_dataset':
+                    mae_info = eval_mae_pose(tree, validloader, device, log)
+                    val_hard_mae, val_soft_mae = mae_info['hard_mae'], mae_info['soft_mae']
+                    mae_str = f", val_hard_mae={val_hard_mae:.2f}deg, val_soft_mae={val_soft_mae:.2f}deg"
                 log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], train_info['train_accuracy'], train_info['loss'], val_hard_mae, val_soft_mae)
                 print(f"Epoch {epoch}: train_acc={train_info['train_accuracy']:.4f}, val_acc={eval_info['test_accuracy']:.4f}{mae_str}", flush=True)
             else:
@@ -170,6 +174,9 @@ def run_tree(args=None):
         if args.dataset == 'face_dataset':
             mae_info = eval_mae(tree, testloader, device, log)
             test_mae_str = f", test_hard_mae={mae_info['hard_mae']:.2f}yr, test_soft_mae={mae_info['soft_mae']:.2f}yr"
+        elif args.dataset == 'head_pose_dataset':
+            mae_info = eval_mae_pose(tree, testloader, device, log)
+            test_mae_str = f", test_hard_mae={mae_info['hard_mae']:.2f}deg, test_soft_mae={mae_info['soft_mae']:.2f}deg"
         log.log_message(f"Trained tree test accuracy: {original_test_acc}{test_mae_str}")
 
     else: #tree was loaded and not trained, so evaluate only
@@ -182,6 +189,9 @@ def run_tree(args=None):
         val_hard_mae, val_soft_mae = "n.a.", "n.a."
         if args.dataset == 'face_dataset':
             mae_info = eval_mae(tree, testloader, device, log)
+            val_hard_mae, val_soft_mae = mae_info['hard_mae'], mae_info['soft_mae']
+        elif args.dataset == 'head_pose_dataset':
+            mae_info = eval_mae_pose(tree, testloader, device, log)
             val_hard_mae, val_soft_mae = mae_info['hard_mae'], mae_info['soft_mae']
         log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], "n.a.", "n.a.", val_hard_mae, val_soft_mae)
 

@@ -187,9 +187,11 @@ def project_with_class_constraints(tree: ProtoTree,
             del distances_batch
             del out_map
 
-        # Copy the patches to the prototype layer weights
-        projection = torch.cat(tuple(global_min_patches[j].unsqueeze(0) for j in range(tree.num_prototypes)),
-                                dim=0, out=tree.prototype_layer.prototype_vectors)
-        del projection
+        # Copy the patches to the prototype layer weights.
+        # Prototypes whose subtree covers only empty-bin classes never get a nearest patch —
+        # keep their existing vector unchanged rather than crashing.
+        for j in range(tree.num_prototypes):
+            if global_min_patches[j] is not None:
+                tree.prototype_layer.prototype_vectors.data[j] = global_min_patches[j]
 
     return global_min_info, tree
