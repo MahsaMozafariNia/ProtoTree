@@ -151,7 +151,7 @@ def run_tree(args=None):
             # Evaluate tree on the validation set every 10 epochs (and always on the last one),
             # regardless of --epochs. testloader is intentionally not touched here.
             if epoch % 10 == 0 or epoch == args.epochs:
-
+                
                 print(f"Temp is {tree.prototype_temp:.5f}")
                 delta_vals = tree.prototype_margin.detach()
                 delta_vals = F.relu(delta_vals - 0.0001) + 0.0001   # this is margin used for routing decision in similarity function

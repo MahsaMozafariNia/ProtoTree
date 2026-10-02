@@ -4,3 +4,5 @@ runs/
 pretrained_models/
 __pycache__/
 *.pyc
+images/
+best-logs/
