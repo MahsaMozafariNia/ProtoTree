@@ -4,3 +4,4 @@ runs/
 pretrained_models/
 __pycache__/
 *.pyc
+*.bash

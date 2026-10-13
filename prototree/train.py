@@ -10,6 +10,15 @@ from prototree.prototree import ProtoTree
 
 from util.log import Log
 
+# Per-class targets for the derivative-free leaf update: row c is the target of class c.
+# One-hot (identity) by default; the dataset's Gaussian label-smoothing matrix if it has one
+# (face_dataset with --label_noise > 0). The cross-entropy loss always uses the hard labels.
+def leaf_targets(tree: ProtoTree, train_loader: DataLoader, device) -> torch.Tensor:
+    soft_targets = getattr(train_loader.dataset, 'soft_targets', None)
+    if soft_targets is None:
+        return torch.eye(tree._num_classes).to(device)
+    return soft_targets.to(device)
+
 def train_epoch(tree: ProtoTree,
                 train_loader: DataLoader,
                 optimizer: torch.optim.Optimizer,
@@ -37,7 +46,7 @@ def train_epoch(tree: ProtoTree,
         for leaf in tree.leaves:
             _old_dist_params[leaf] = leaf._dist_params.detach().clone()
         # Optimize class distributions in leafs
-        eye = torch.eye(tree._num_classes).to(device)
+        class_targets = leaf_targets(tree, train_loader, device)
 
     # Iterate through the data set to update leaves, prototypes and network
     for i, (xs, ys) in enumerate(train_loader):
@@ -78,7 +87,7 @@ def train_epoch(tree: ProtoTree,
             #Make sure the tree is in eval mode
             tree.eval()
             with torch.no_grad():
-                target = eye[ys] #shape (batchsize, num_classes)
+                target = class_targets[ys] #shape (batchsize, num_classes)
                 # Floor ys_pred away from 0 before dividing by it below -- without this, a
                 # near-zero predicted probability blows the update up to inf/NaN, which then
                 # corrupts leaf._dist_params and, via the next forward/backward pass, prototype_vectors.
@@ -208,7 +217,7 @@ def train_leaves_epoch(tree: ProtoTree,
         for leaf in tree.leaves:
             _old_dist_params[leaf] = leaf._dist_params.detach().clone()
         # Optimize class distributions in leafs
-        eye = torch.eye(tree._num_classes).to(device)
+        class_targets = leaf_targets(tree, train_loader, device)
 
         # Iterate through the data set
         update_sum = dict()
@@ -221,7 +230,7 @@ def train_leaves_epoch(tree: ProtoTree,
             xs, ys = xs.to(device), ys.to(device)
             #Train leafs without gradient descent
             out, info = tree.forward(xs)
-            target = eye[ys] #shape (batchsize, num_classes)
+            target = class_targets[ys] #shape (batchsize, num_classes)
             # See the same guard in train_epoch: floor out away from 0 before dividing by it.
             out_safe = torch.clamp(out, min=1e-6)
             for leaf in tree.leaves:

@@ -181,11 +181,10 @@ class UTKFaceBinned(torch.utils.data.Dataset):
         self.data = pd.read_csv(csv_file)
         self.bin_edges = bin_edges
         self.transform = transform
-        # Target-side augmentation (training set only): jitter the age by up to `label_noise`
-        # years before binning, freshly each time a sample is fetched, so a face near a bin
-        # boundary gets a different (adjacent) label across epochs instead of one memorizable label.
-        self.label_noise = label_noise
-        self.noise_type = noise_type
+        # Gaussian label smoothing (training set only): a (num_classes, num_classes) matrix whose
+        # row c is the soft target used for class c in the derivative-free leaf update. The
+        # cross-entropy loss keeps using the clean hard labels. None = plain one-hot targets.
+        self.soft_targets = self._smoothing_matrix(label_noise, noise_type) if label_noise > 0 else None
         # ImageFolder-style (path, label) list, in row order (matches the unshuffled
         # projectloader), for code that expects torchvision.datasets.ImageFolder's .imgs
         # (e.g. prototree/upsample.py indexing project_loader.dataset.imgs[i]).
@@ -196,6 +195,27 @@ class UTKFaceBinned(torch.utils.data.Dataset):
         # Internal edges only (drop the -inf/+inf outer edges) so digitize returns 0..num_bins-1
         return int(np.digitize([float(age)], self.bin_edges[1:-1], right=False)[0])
 
+    def _smoothing_matrix(self, label_noise: float, noise_type: str) -> torch.Tensor:
+        # For every sample, the fraction of a noise distribution centred on its true age that
+        # falls in each bin (gaussian: std = label_noise years; uniform: [age - label_noise,
+        # age + label_noise]). Row c of the matrix is the average of these over all samples of
+        # class c, so every sample of a class gets the same soft target.
+        ages = self.data['age'].astype(float).values
+        num_classes = len(self.bin_edges) - 1
+        if noise_type == 'uniform':
+            cdf = np.clip((self.bin_edges[None, :] - (ages[:, None] - label_noise)) / (2 * label_noise), 0.0, 1.0)
+        else:  # gaussian
+            z = torch.tensor((self.bin_edges[None, :] - ages[:, None]) / (label_noise * np.sqrt(2.0)))
+            cdf = (0.5 * (1.0 + torch.erf(z))).numpy()
+        per_sample = np.diff(cdf, axis=1)  # (num_samples, num_classes)
+        labels = np.digitize(ages, self.bin_edges[1:-1], right=False)
+        matrix = np.eye(num_classes)  # classes without training samples keep a one-hot row
+        for c in range(num_classes):
+            if np.any(labels == c):
+                row = per_sample[labels == c].mean(axis=0)
+                matrix[c] = row / row.sum()
+        return torch.tensor(matrix, dtype=torch.float32)
+
     def __len__(self):
         return len(self.data)
 
@@ -203,13 +223,7 @@ class UTKFaceBinned(torch.utils.data.Dataset):
         row = self.data.iloc[idx]
         image = Image.open(os.path.join(self.root_dir, row['image_name'])).convert('RGB')
         image = self.transform(image)
-        age = float(row['age'])
-        if self.label_noise > 0:
-            if self.noise_type == 'uniform':
-                age += np.random.uniform(-self.label_noise, self.label_noise)
-            else:  # gaussian, std = label_noise years
-                age += np.random.normal(0.0, self.label_noise)
-        return image, self._label(age)
+        return image, self._label(row['age'])
 
 
 def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, csv_file_valid: str, csv_file_test: str, img_size=224):
