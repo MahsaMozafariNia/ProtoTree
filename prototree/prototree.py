@@ -131,9 +131,9 @@ class ProtoTree(nn.Module):
 
         # Use the features to compute the distances from the prototypes
         distances = self.prototype_layer(features)  # Shape: (batch_size, num_prototypes, W, H)
-
+        _, _, W_dist, H_dist = distances.shape
         # Perform global min pooling to see the minimal distance for each prototype to any patch of the input image
-        min_distances = min_pool2d(distances, kernel_size=(W, H))
+        min_distances = min_pool2d(distances, kernel_size=(W_dist, H_dist))
         min_distances = min_distances.view(bs, self.num_prototypes)
 
         # Gaussian-regression-tree similarity: instead of a plain exp(-distance), compare the
