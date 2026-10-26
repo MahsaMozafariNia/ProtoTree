@@ -7,7 +7,7 @@
 #SBATCH --partition=gpu                 # Select partition
 #SBATCH --mem=32gb                      # Job memory request
 #SBATCH --time=01:00:00                 # Time limit hrs:min:sec
-#SBATCH --gres=gpu:a100:1              # Request one GPU
+#SBATCH --gres=gpu:a30:1              # Request one GPU
 
 #SBATCH --output=%j_face_explain_local.log   # Standard output and error log
 
@@ -22,7 +22,7 @@ run_dir="./runs/prototree_face_with_protopairnet_data/run_5"   # finished traini
 checkpoint="pruned_and_projected"          # subfolder of <run_dir>/checkpoints, or a full path (e.g. $run_dir/finetune/run_1/checkpoints/finetuned_best)
 csv_dir="./protopairnet_csv_dataset"
 num_test_samples=100                        # explain the first N images of test_set.csv
-export FACE_DATA_ROOT="./data/face_dataset/utkcropped"   # UTKFace images on the cluster
+export FACE_DATA_ROOT="/home/mozafarinia/Documents/vit_age_prediction-rose-setup/data/age_prediction/utkcropped"   # UTKFace images on the cluster
 sif_file="/home/mozafarinia/Documents/car-regression/sif_file_car.sif"
 
 # predvis.pdf is rendered with Graphviz; check it exists inside the container

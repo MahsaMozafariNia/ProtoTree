@@ -174,8 +174,8 @@ def gen_pred_vis(tree: ProtoTree,
     with open(os.path.join(destination_folder, 'predvis.dot'), 'w') as f:
         f.write(s)
 
-    from_p = os.path.join(destination_folder, 'predvis.dot')
-    to_pdf = os.path.join(destination_folder, 'predvis.pdf')
-    check_call('dot -Tpdf -Gmargin=0 %s -o %s' % (from_p, to_pdf), shell=True)
+    # from_p = os.path.join(destination_folder, 'predvis.dot')
+    # to_pdf = os.path.join(destination_folder, 'predvis.pdf')
+    # check_call('dot -Tpdf -Gmargin=0 %s -o %s' % (from_p, to_pdf), shell=True)
 
 

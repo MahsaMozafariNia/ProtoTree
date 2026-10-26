@@ -20,7 +20,7 @@ module load apptainer
 
 run_dir="./runs/prototree_face_with_protopairnet_data/run_5"   # finished training run to fine-tune
 export FACE_CSV_DIR="/home/mozafarinia/Documents/ProtoTree/protopairnet_csv_dataset"
-export FACE_DATA_ROOT="./data/face_dataset/utkcropped"   # UTKFace images on the cluster
+export FACE_DATA_ROOT="/home/mozafarinia/Documents/vit_age_prediction-rose-setup/data/age_prediction/utkcropped"   # UTKFace images on the cluster
 sif_file="/home/mozafarinia/Documents/car-regression/sif_file_car.sif"
 
 apptainer run --nv "$sif_file" \
