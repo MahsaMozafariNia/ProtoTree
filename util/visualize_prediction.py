@@ -7,6 +7,7 @@ import copy
 import argparse
 from subprocess import check_call
 import math
+from pathlib import Path
 from PIL import Image
 from prototree.upsample import find_high_activation_crop, imsave_with_bbox
 import torch
@@ -97,7 +98,10 @@ def gen_pred_vis(tree: ProtoTree,
     
     # Create dir to store visualization
     # img_name = sample_dir.split('/')[-1].split(".")[-2]
-    img_name = os.path.splitext(os.path.basename(sample_dir))[0]
+    sample_dir_new = sample_dir
+    if sample_dir.endswith(".jpg.chip.jpg"):
+        sample_dir_new = sample_dir.replace(".jpg.chip.jpg", ".jpg")
+    img_name = Path(sample_dir_new).stem
     if not os.path.exists(os.path.join(args.log_dir, folder_name)):
         os.makedirs(os.path.join(args.log_dir, folder_name))
     destination_folder=os.path.join(os.path.join(args.log_dir, folder_name),img_name)

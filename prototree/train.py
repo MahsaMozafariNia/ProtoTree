@@ -63,25 +63,38 @@ def train_epoch(tree: ProtoTree,
         if tree._log_probabilities:
             loss = F.nll_loss(ys_pred, ys)
         else:
-            loss = F.nll_loss(torch.log(ys_pred), ys)
-        
+            # Floor before log: if ys_pred underflows to exactly 0 (float32), log(0) = -inf,
+            # producing an inf loss and, through backward(), NaN gradients everywhere. Flooring
+            # only ever changes an already-vanishing probability, so it doesn't touch normal-range
+            # predictions or the model's actual behavior.
+            loss = F.nll_loss(torch.log(torch.clamp(ys_pred, min=1e-6)), ys)
+
         # Compute the gradient
         loss.backward()
+        # Clip gradients so a single bad batch can't push a parameter to inf/NaN
+        torch.nn.utils.clip_grad_norm_(tree.parameters(), max_norm=1.0)
         # Update model parameters
         optimizer.step()
+        # Keep prototypes in the same [0, 1] range as the add-on layer's Sigmoid output
+        with torch.no_grad():
+            tree.prototype_layer.prototype_vectors.data.clamp_(0.0, 1.0)
         
         if not disable_derivative_free_leaf_optim:
             #Update leaves with derivate-free algorithm
             #Make sure the tree is in eval mode
             tree.eval()
             with torch.no_grad():
-                target = eye[ys] #shape (batchsize, num_classes) 
-                for leaf in tree.leaves:  
+                target = eye[ys] #shape (batchsize, num_classes)
+                # Floor ys_pred away from 0 before dividing by it below -- without this, a
+                # near-zero predicted probability blows the update up to inf/NaN, which then
+                # corrupts leaf._dist_params and, via the next forward/backward pass, prototype_vectors.
+                ys_pred_safe = torch.clamp(ys_pred, min=1e-6)
+                for leaf in tree.leaves:
                     if tree._log_probabilities:
                         # log version
                         update = torch.exp(torch.logsumexp(info['pa_tensor'][leaf.index] + leaf.distribution() + torch.log(target) - ys_pred, dim=0))
                     else:
-                        update = torch.sum((info['pa_tensor'][leaf.index] * leaf.distribution() * target)/ys_pred, dim=0)  
+                        update = torch.sum((info['pa_tensor'][leaf.index] * leaf.distribution() * target)/ys_pred_safe, dim=0)
                     leaf._dist_params -= (_old_dist_params[leaf]/nr_batches)
                     F.relu_(leaf._dist_params) #dist_params values can get slightly negative because of floating point issues. therefore, set to zero.
                     leaf._dist_params += update
@@ -164,11 +177,17 @@ def train_epoch_kontschieder(tree: ProtoTree,
         if tree._log_probabilities:
             loss = F.nll_loss(ys_pred, ys)
         else:
-            loss = F.nll_loss(torch.log(ys_pred), ys)
+            # See train_epoch: floor before log to avoid log(0) = -inf on an underflowed prediction.
+            loss = F.nll_loss(torch.log(torch.clamp(ys_pred, min=1e-6)), ys)
         # Compute the gradient
         loss.backward()
+        # Clip gradients so a single bad batch can't push a parameter to inf/NaN
+        torch.nn.utils.clip_grad_norm_(tree.parameters(), max_norm=1.0)
         # Update model parameters
         optimizer.step()
+        # Keep prototypes in the same [0, 1] range as the add-on layer's Sigmoid output
+        with torch.no_grad():
+            tree.prototype_layer.prototype_vectors.data.clamp_(0.0, 1.0)
 
         # Count the number of correct classifications
         ys_pred = torch.argmax(ys_pred, dim=1)
@@ -226,13 +245,15 @@ def train_leaves_epoch(tree: ProtoTree,
             xs, ys = xs.to(device), ys.to(device)
             #Train leafs without gradient descent
             out, info = tree.forward(xs)
-            target = eye[ys] #shape (batchsize, num_classes) 
-            for leaf in tree.leaves:  
+            target = eye[ys] #shape (batchsize, num_classes)
+            # See the same guard in train_epoch: floor out away from 0 before dividing by it.
+            out_safe = torch.clamp(out, min=1e-6)
+            for leaf in tree.leaves:
                 if tree._log_probabilities:
                     # log version
                     update = torch.exp(torch.logsumexp(info['pa_tensor'][leaf.index] + leaf.distribution() + torch.log(target) - out, dim=0))
                 else:
-                    update = torch.sum((info['pa_tensor'][leaf.index] * leaf.distribution() * target)/out, dim=0)
+                    update = torch.sum((info['pa_tensor'][leaf.index] * leaf.distribution() * target)/out_safe, dim=0)
                 update_sum[leaf] += update
 
         for leaf in tree.leaves:
