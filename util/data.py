@@ -8,6 +8,8 @@ import torch.utils.data
 import torchvision
 import torchvision.transforms as transforms
 from torchvision.transforms import ToTensor, Normalize, Compose, Lambda
+import pandas as pd
+from PIL import Image
 
 
 def get_data(args: argparse.Namespace): 
@@ -25,6 +27,13 @@ def get_data(args: argparse.Namespace):
         return get_birds(True, './data/CUB_200_2011/dataset/train_corners', './data/CUB_200_2011/dataset/train_crop', './data/CUB_200_2011/dataset/test_full')
     if args.dataset == 'CARS':
         return get_cars(True, './data/cars/dataset/train', './data/cars/dataset/train', './data/cars/dataset/test')
+    if args.dataset == 'face_dataset':
+        csv_dir = os.environ.get('FACE_CSV_DIR', args.face_csv_dir)
+        data_root = os.environ.get('FACE_DATA_ROOT', args.face_data_root)
+        return get_faces(args, data_root,
+                         f'{csv_dir}/train_set.csv',
+                         f'{csv_dir}/train_set.csv',
+                         f'{csv_dir}/test_set.csv')
     raise Exception(f'Could not load data set "{args.dataset}"!')
 
 def get_dataloaders(args: argparse.Namespace):
@@ -126,3 +135,94 @@ def get_cars(augment: bool, train_dir:str, project_dir: str, test_dir:str, img_s
     return trainset, projectset, testset, classes, shape
 
 
+
+
+class UTKFaceBinned(torch.utils.data.Dataset):
+    """
+    UTKFace-style face dataset (image_name, age, ethnicity, gender columns) that turns the
+    continuous age into a classification label by assigning it to one of `len(bin_edges) - 1`
+    age bins, so ProtoTree's classification pipeline can be used unchanged.
+    """
+
+    def __init__(self, root_dir: str, csv_file: str, bin_edges: np.ndarray, transform):
+        self.root_dir = root_dir
+        self.data = pd.read_csv(csv_file)
+        self.bin_edges = bin_edges
+        self.transform = transform
+        # ImageFolder-style (path, label) list, in row order (matches the unshuffled
+        # projectloader), for code that expects torchvision.datasets.ImageFolder's .imgs
+        # (e.g. prototree/upsample.py indexing project_loader.dataset.imgs[i]).
+        self.imgs = [(os.path.join(root_dir, row.image_name), self._label(row.age))
+                     for row in self.data.itertuples()]
+
+    def _label(self, age: float) -> int:
+        # Internal edges only (drop the -inf/+inf outer edges) so digitize returns 0..num_bins-1
+        return int(np.digitize([float(age)], self.bin_edges[1:-1], right=False)[0])
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        row = self.data.iloc[idx]
+        image = Image.open(os.path.join(self.root_dir, row['image_name'])).convert('RGB')
+        image = self.transform(image)
+        return image, self._label(row['age'])
+
+
+def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, csv_file_test: str, img_size=224):
+    shape = (3, img_size, img_size)
+    mean = (0.485, 0.456, 0.406)
+    std = (0.229, 0.224, 0.225)
+    normalize = transforms.Normalize(mean=mean, std=std)
+    transform_no_augment = transforms.Compose([
+                            transforms.Resize(size=(img_size, img_size)),
+                            transforms.ToTensor(),
+                            normalize
+                        ])
+    transform = transforms.Compose([
+        transforms.Resize(size=(img_size, img_size)),
+        transforms.RandomOrder([
+        transforms.RandomPerspective(distortion_scale=0.2, p = 0.5),
+        transforms.ColorJitter((0.6,1.4), (0.6,1.4), (0.6,1.4), (-0.02,0.02)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomAffine(degrees=10, shear=(-2,2),translate=[0.05,0.05]),
+        ]),
+        transforms.ToTensor(),
+        normalize,
+    ])
+
+    # --double_leaves halves the number of classes (bins) relative to the number of leaves
+    # (2^depth), so every bin is reachable through two independent leaves/routing paths.
+    num_bins = 2 ** (args.depth - 1) if args.double_leaves else 2 ** args.depth
+    train_ages = pd.read_csv(csv_file_train)['age'].astype(float).values
+    if args.bin_strategy == 'quantile':
+        # Percentile edges of the training ages, so each bin holds roughly num_train/num_bins
+        # samples -- at the cost of uneven bin widths.
+        percentiles = np.linspace(0, 100, num_bins + 1)
+        bin_edges = np.unique(np.percentile(train_ages, percentiles))
+        if len(bin_edges) - 1 < num_bins:
+            # Integer ages create duplicate percentile edges at fine enough resolution;
+            # proceed with fewer, wider bins rather than erroring out.
+            print(f"face_dataset: requested {num_bins} quantile bins but the training ages only support "
+                  f"{len(bin_edges) - 1} distinct ones (too many ties); using {len(bin_edges) - 1} classes instead.", flush=True)
+    else:
+        # Equal-width age bins: max_age / num_bins, rounded to whole years.
+        max_age = train_ages.max()
+        bin_width = round(max_age / num_bins)
+        bin_edges = np.array([i * bin_width for i in range(num_bins + 1)], dtype=float)
+    bin_edges[0], bin_edges[-1] = -np.inf, np.inf
+
+    trainset = UTKFaceBinned(data_root, csv_file_train, bin_edges, transform)
+    projectset = UTKFaceBinned(data_root, csv_file_project, bin_edges, transform_no_augment)
+    testset = UTKFaceBinned(data_root, csv_file_test, bin_edges, transform_no_augment)
+
+    classes = []
+    for lo, hi in zip(bin_edges[:-1], bin_edges[1:]):
+        if not np.isfinite(lo):
+            classes.append(f'<{hi:.0f}')
+        elif not np.isfinite(hi):
+            classes.append(f'>={lo:.0f}')
+        else:
+            classes.append(f'{lo:.0f}-{hi:.0f}')
+
+    return trainset, projectset, testset, classes, shape

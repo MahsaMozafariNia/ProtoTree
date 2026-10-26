@@ -16,7 +16,23 @@ def get_args() -> argparse.Namespace:
     parser.add_argument('--dataset',
                         type=str,
                         default='CUB-200-2011',
-                        help='Data set on which the ProtoTree should be trained')
+                        help='Data set on which the ProtoTree should be trained. Options: CUB-200-2011, CARS, face_dataset')
+    parser.add_argument('--face_csv_dir',
+                        type=str,
+                        default='./protopairnet_csv_dataset',
+                        help="Directory containing train_set.csv and test_set.csv for --dataset face_dataset (columns: image_name, age, ethnicity, gender). Overridable with the FACE_CSV_DIR environment variable.")
+    parser.add_argument('--face_data_root',
+                        type=str,
+                        default='./data/face_dataset/utkcropped',
+                        help="Directory containing the UTKFace images referenced by --face_csv_dir's csv files. Overridable with the FACE_DATA_ROOT environment variable.")
+    parser.add_argument('--bin_strategy',
+                        type=str,
+                        default='quantile',
+                        choices=['equal_width', 'quantile'],
+                        help="How --dataset face_dataset turns age into classes. 'equal_width': bins of max_age/num_bins years each. 'quantile': bin edges are percentiles of the training ages, so every bin has roughly the same number of samples.")
+    parser.add_argument('--double_leaves',
+                        action='store_true',
+                        help="For --dataset face_dataset: use 2^(depth-1) age bins/classes instead of 2^depth, while the tree still has 2^depth leaves, so every bin can be reached through two leaves.")
     parser.add_argument('--net',
                         type=str,
                         default='resnet50_inat',
@@ -137,6 +153,9 @@ def get_args() -> argparse.Namespace:
                         type=int,
                         default=5,
                         help='Number of ProtoTrees to train and (optionally) use in an ensemble. Used in main_ensemble.py') 
+    parser.add_argument('--pretrained_face',
+                        action='store_true',
+                        help="Load resnet50 weights fine-tuned on face_dataset (./pretrained_models/resnet_baseline_face_dataset_size224_lr0.0001_ep50_powerful_augument_False.pth) instead of generic ImageNet weights. Only applies to --net resnet50.")
     args = parser.parse_args()
     args.milestones = get_milestones(args)
     return args

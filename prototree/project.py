@@ -1,7 +1,7 @@
 import argparse
 import torch
 from torch.utils.data import DataLoader
-from tqdm import tqdm
+from util.no_tqdm import tqdm
 import numpy as np
 
 from prototree.prototree import ProtoTree

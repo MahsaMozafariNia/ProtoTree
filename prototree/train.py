@@ -1,4 +1,4 @@
-from tqdm import tqdm
+from util.no_tqdm import tqdm
 import argparse
 from copy import deepcopy
 import torch

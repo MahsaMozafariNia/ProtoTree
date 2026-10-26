@@ -1,5 +1,5 @@
 import argparse
-from tqdm import tqdm
+from util.no_tqdm import tqdm
 import numpy as np
 
 import torch

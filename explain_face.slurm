@@ -1,0 +1,37 @@
+#!/bin/bash
+
+#SBATCH --job-name=Mozaf         # Job name
+#SBATCH --cpus-per-task=2               # Run on a 2 cores per node
+#SBATCH --nodes=1                       # Run on a 1 node
+#SBATCH --ntasks=1                      # One process (shared-memory)
+#SBATCH --partition=gpu                 # Select partition
+#SBATCH --mem=32gb                      # Job memory request
+#SBATCH --time=01:00:00                 # Time limit hrs:min:sec
+#SBATCH --gres=gpu:a100:1              # Request one GPU
+
+#SBATCH --output=%j_face_classification_explain_local.log   # Standard output and error log
+
+echo "====================================================="
+pwd; hostname; date
+git rev-parse --abbrev-ref HEAD; git rev-parse HEAD
+echo "====================================================="
+
+module load apptainer
+
+run_dir="./runs/prototree_face_classification"   # log_dir of train_face_classification.slurm
+checkpoint="pruned_and_projected"          # subfolder of <run_dir>/checkpoints
+csv_dir="./protopairnet_csv_dataset"
+num_test_samples=100                       # explain the first N images of test_set.csv
+export FACE_DATA_ROOT="./data/face_dataset/utkcropped"   # UTKFace images on the cluster
+sif_file="/home/mozafarinia/Documents/car-regression/sif_file_car.sif"
+
+# predvis.pdf is rendered with Graphviz; without it only predvis.dot is written (render it elsewhere)
+apptainer exec "$sif_file" which dot || echo "WARNING: Graphviz 'dot' not found in container, only predvis.dot will be written"
+
+apptainer run --nv "$sif_file" \
+python "main_explain_local.py" --run_dir=$run_dir --checkpoint=$checkpoint --csv_dir=$csv_dir \
+--num_test_samples=$num_test_samples
+
+echo "Results in $run_dir/local_explanations"
+echo "====================================================="
+date

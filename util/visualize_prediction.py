@@ -176,6 +176,10 @@ def gen_pred_vis(tree: ProtoTree,
 
     from_p = os.path.join(destination_folder, 'predvis.dot')
     to_pdf = os.path.join(destination_folder, 'predvis.pdf')
-    check_call('dot -Tpdf -Gmargin=0 %s -o %s' % (from_p, to_pdf), shell=True)
+    try:
+        check_call('dot -Tpdf -Gmargin=0 %s -o %s' % (from_p, to_pdf), shell=True)
+    except Exception:
+        # Graphviz is not available on the cluster; keep the .dot file and render it elsewhere
+        print("WARNING: could not render %s with Graphviz 'dot', render it elsewhere with: dot -Tpdf %s -o %s" % (from_p, from_p, to_pdf), flush=True)
 
 
