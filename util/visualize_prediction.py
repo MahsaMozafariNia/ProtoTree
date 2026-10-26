@@ -10,6 +10,7 @@ import math
 from PIL import Image
 from prototree.upsample import find_high_activation_crop, imsave_with_bbox
 import torch
+from pathlib import Path
 
 import torchvision
 from torchvision.utils import save_image
@@ -96,7 +97,12 @@ def gen_pred_vis(tree: ProtoTree,
     pred_kwargs = pred_kwargs or dict()  # TODO -- assert deterministic routing
     
     # Create dir to store visualization
-    img_name = sample_dir.split('/')[-1].split(".")[-2]
+    # img_name = sample_dir.split('/')[-1].split(".")[-2]
+    if sample_dir.endswith(".jpg.chip.jpg"):
+        sample_dir_new = sample_dir.replace(".jpg.chip.jpg", ".jpg")
+    # Create dir to store visualization
+    # img_name = sample_dir_new.split('/')[-1].split(".")[-2]
+    img_name = Path(sample_dir_new).stem
     
     if not os.path.exists(os.path.join(args.log_dir, folder_name)):
         os.makedirs(os.path.join(args.log_dir, folder_name))
