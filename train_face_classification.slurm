@@ -7,7 +7,7 @@
 #SBATCH --partition=gpu                 # Select partition
 #SBATCH --mem=32gb                      # Job memory request
 #SBATCH --time=12:00:00                 # Time limit hrs:min:sec
-#SBATCH --gres=gpu:a100:1              # Request one GPU
+#SBATCH --gres=gpu:a30:1              # Request one GPU
 
 #SBATCH --output=%j_face_classification_train.log   # Standard output and error log
 
@@ -20,7 +20,7 @@ module load apptainer
 
 # Original ProtoTree (exp(-distance) similarity) on face_dataset with the same age bins as run_5
 export FACE_CSV_DIR="./protopairnet_csv_dataset"
-export FACE_DATA_ROOT="./data/face_dataset/utkcropped"   # UTKFace images on the cluster
+export FACE_DATA_ROOT="/home/mozafarinia/Documents/vit_age_prediction-rose-setup/data/age_prediction/utkcropped"   # UTKFace images on the cluster
 sif_file="/home/mozafarinia/Documents/car-regression/sif_file_car.sif"
 
 epochs=100
@@ -38,7 +38,7 @@ batch_size=128
 weight_decay=5e-4
 W1=1
 H1=1
-bin_strategy="quantile"
+# bin_strategy="quantile"
 
 apptainer run --nv "$sif_file" \
 python "main_tree.py" --epochs=$epochs --log_dir=$log_dir \
@@ -46,7 +46,7 @@ python "main_tree.py" --epochs=$epochs --log_dir=$log_dir \
 --lr_block=$lr_block --lr_net=$lr_net --num_features=$num_features --depth=$depth \
 --net=$net --freeze_epochs=$freeze_epochs --milestones=$milestones \
 --batch_size=$batch_size --W1=$W1 --H1=$H1 --weight_decay=$weight_decay --pretrained_face \
---double_leaves --bin_strategy=$bin_strategy
+# --double_leaves --bin_strategy=$bin_strategy
 
 echo "====================================================="
 date
