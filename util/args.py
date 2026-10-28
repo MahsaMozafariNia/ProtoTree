@@ -156,6 +156,10 @@ def get_args() -> argparse.Namespace:
     parser.add_argument('--pretrained_face',
                         action='store_true',
                         help="Load resnet50 weights fine-tuned on face_dataset (./pretrained_models/resnet_baseline_face_dataset_size224_lr0.0001_ep50_powerful_augument_False.pth) instead of generic ImageNet weights. Only applies to --net resnet50.")
+    parser.add_argument('--num_workers',
+                        type=int,
+                        default=0,
+                        help='Number of DataLoader worker subprocesses. 0 loads in the main process (original behaviour).')
     args = parser.parse_args()
     args.milestones = get_milestones(args)
     return args

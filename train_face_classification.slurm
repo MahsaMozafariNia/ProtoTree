@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=Mozaf         # Job name
-#SBATCH --cpus-per-task=2               # Run on a 2 cores per node
+#SBATCH --cpus-per-task=4               # Run on a 4 cores per node (one per DataLoader worker)
 #SBATCH --nodes=1                       # Run on a 1 node
 #SBATCH --ntasks=1                      # One process (shared-memory)
 #SBATCH --partition=gpu                 # Select partition
@@ -45,7 +45,7 @@ python "main_tree.py" --epochs=$epochs --log_dir=$log_dir \
 --dataset=$dataset --lr=$lr \
 --lr_block=$lr_block --lr_net=$lr_net --num_features=$num_features --depth=$depth \
 --net=$net --freeze_epochs=$freeze_epochs --milestones=$milestones \
---batch_size=$batch_size --W1=$W1 --H1=$H1 --weight_decay=$weight_decay --pretrained_face \
+--batch_size=$batch_size --W1=$W1 --H1=$H1 --weight_decay=$weight_decay --pretrained_face --num_workers=4 \
 # --double_leaves --bin_strategy=$bin_strategy
 
 echo "====================================================="
