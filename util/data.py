@@ -16,24 +16,26 @@ def get_data(args: argparse.Namespace):
     """
     Load the proper dataset based on the parsed arguments
     :param args: The arguments in which is specified which dataset should be used
-    :return: a 5-tuple consisting of:
+    :return: a 6-tuple consisting of:
                 - The train data set
                 - The project data set (usually train data set without augmentation)
                 - The test data set
                 - a tuple containing all possible class labels
                 - a tuple containing the shape (depth, width, height) of the input images
+                - The validation data set (None for data sets without one)
     """
     if args.dataset =='CUB-200-2011':
-        return get_birds(True, './data/CUB_200_2011/dataset/train_corners', './data/CUB_200_2011/dataset/train_crop', './data/CUB_200_2011/dataset/test_full')
+        return (*get_birds(True, './data/CUB_200_2011/dataset/train_corners', './data/CUB_200_2011/dataset/train_crop', './data/CUB_200_2011/dataset/test_full'), None)
     if args.dataset == 'CARS':
-        return get_cars(True, './data/cars/dataset/train', './data/cars/dataset/train', './data/cars/dataset/test')
+        return (*get_cars(True, './data/cars/dataset/train', './data/cars/dataset/train', './data/cars/dataset/test'), None)
     if args.dataset == 'face_dataset':
         csv_dir = os.environ.get('FACE_CSV_DIR', args.face_csv_dir)
         data_root = os.environ.get('FACE_DATA_ROOT', args.face_data_root)
         return get_faces(args, data_root,
                          f'{csv_dir}/train_set.csv',
                          f'{csv_dir}/train_set.csv',
-                         f'{csv_dir}/test_set.csv')
+                         f'{csv_dir}/test_set.csv',
+                         f'{csv_dir}/valid_set.csv')
     raise Exception(f'Could not load data set "{args.dataset}"!')
 
 def get_dataloaders(args: argparse.Namespace):
@@ -41,7 +43,7 @@ def get_dataloaders(args: argparse.Namespace):
     Get data loaders
     """
     # Obtain the dataset
-    trainset, projectset, testset, classes, shape  = get_data(args)
+    trainset, projectset, testset, classes, shape, validset = get_data(args)
     c, w, h = shape
     # Determine if GPU should be used
     cuda = not args.disable_cuda and torch.cuda.is_available()
@@ -66,8 +68,18 @@ def get_dataloaders(args: argparse.Namespace):
                                              pin_memory=cuda,
                                              num_workers=num_workers
                                              )
+    # Data sets without a validation split fall back to the test set for model selection
+    if validset is None:
+        validloader = testloader
+    else:
+        validloader = torch.utils.data.DataLoader(validset,
+                                                  batch_size=args.batch_size,
+                                                  shuffle=False,
+                                                  pin_memory=cuda,
+                                                  num_workers=num_workers
+                                                  )
     print("Num classes (k) = ", len(classes), flush=True)
-    return trainloader, projectloader, testloader, classes, c
+    return trainloader, projectloader, testloader, classes, c, validloader
 
 
 def get_birds(augment: bool, train_dir:str, project_dir: str, test_dir:str, img_size = 224): 
@@ -174,7 +186,7 @@ class UTKFaceBinned(torch.utils.data.Dataset):
         return image, self._label(row['age'])
 
 
-def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, csv_file_test: str, img_size=224):
+def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, csv_file_test: str, csv_file_valid: str, img_size=224):
     shape = (3, img_size, img_size)
     mean = (0.485, 0.456, 0.406)
     std = (0.229, 0.224, 0.225)
@@ -220,6 +232,7 @@ def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, 
     trainset = UTKFaceBinned(data_root, csv_file_train, bin_edges, transform)
     projectset = UTKFaceBinned(data_root, csv_file_project, bin_edges, transform_no_augment)
     testset = UTKFaceBinned(data_root, csv_file_test, bin_edges, transform_no_augment)
+    validset = UTKFaceBinned(data_root, csv_file_valid, bin_edges, transform_no_augment)
 
     classes = []
     for lo, hi in zip(bin_edges[:-1], bin_edges[1:]):
@@ -230,4 +243,4 @@ def get_faces(args, data_root: str, csv_file_train: str, csv_file_project: str, 
         else:
             classes.append(f'{lo:.0f}-{hi:.0f}')
 
-    return trainset, projectset, testset, classes, shape
+    return trainset, projectset, testset, classes, shape, validset

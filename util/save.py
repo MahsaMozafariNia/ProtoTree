@@ -39,6 +39,16 @@ def save_best_test_tree(tree: ProtoTree, optimizer, scheduler, best_test_acc: fl
         torch.save(scheduler.state_dict(), f'{log.checkpoint_dir}/best_test_model/scheduler_state.pth')
     return best_test_acc
 
+def save_best_valid_tree(tree: ProtoTree, optimizer, scheduler, best_valid_acc: float, valid_acc: float, log: Log):
+    tree.eval()
+    if valid_acc > best_valid_acc:
+        best_valid_acc = valid_acc
+        tree.save(f'{log.checkpoint_dir}/best_valid_model')
+        tree.save_state(f'{log.checkpoint_dir}/best_valid_model')
+        torch.save(optimizer.state_dict(), f'{log.checkpoint_dir}/best_valid_model/optimizer_state.pth')
+        torch.save(scheduler.state_dict(), f'{log.checkpoint_dir}/best_valid_model/scheduler_state.pth')
+    return best_valid_acc
+
 def save_tree_description(tree: ProtoTree, optimizer, scheduler, description: str, log: Log):
     tree.eval()
     # Save model with description

@@ -19,7 +19,8 @@ def eval(tree: ProtoTree,
         log: Log = None,  
         sampling_strategy: str = 'distributed',
         log_prefix: str = 'log_eval_epochs', 
-        progress_prefix: str = 'Eval Epoch'
+        progress_prefix: str = 'Eval Epoch',
+        split: str = 'Test'
         ) -> dict:
     tree = tree.to(device)
 
@@ -66,7 +67,7 @@ def eval(tree: ProtoTree,
 
     info['confusion_matrix'] = cm
     info['test_accuracy'] = acc_from_cm(cm)
-    log.log_message("\nEpoch %s - Test accuracy with %s routing: "%(epoch, sampling_strategy)+str(info['test_accuracy']))
+    log.log_message("\nEpoch %s - %s accuracy with %s routing: "%(epoch, split, sampling_strategy)+str(info['test_accuracy']))
     return info
 
 @torch.no_grad()

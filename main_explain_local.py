@@ -108,7 +108,7 @@ if __name__ == '__main__':
     tree.eval()
     print('Model explained: ', args.checkpoint)
     # Obtain the class names (for face_dataset: the age bins)
-    _, _, testloader, classes, _ = get_dataloaders(args)
+    _, _, testloader, classes, _, _ = get_dataloaders(args)
 
     if args.num_test_samples > 0:
         testset = testloader.dataset

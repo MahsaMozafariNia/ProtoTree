@@ -14,6 +14,7 @@ from prototree.prune import prune
 from prototree.project import project, project_with_class_constraints
 from prototree.upsample import upsample
 
+import os
 import torch
 from shutil import copy
 from copy import deepcopy
@@ -23,8 +24,8 @@ def run_tree(args=None):
     # Create a logger
     log = Log(args.log_dir)
     print("Log dir: ", args.log_dir, flush=True)
-    # Create a csv log for storing the test accuracy, mean train accuracy and mean loss for each epoch
-    log.create_log('log_epoch_overview', 'epoch', 'test_acc', 'mean_train_acc', 'mean_train_crossentropy_loss_during_epoch')
+    # Create a csv log for storing the validation accuracy, mean train accuracy and mean loss for each epoch
+    log.create_log('log_epoch_overview', 'epoch', 'valid_acc', 'mean_train_acc', 'mean_train_crossentropy_loss_during_epoch')
     # Log the run arguments
     save_args(args, log.metadata_dir)
     if not args.disable_cuda and torch.cuda.is_available():
@@ -42,7 +43,7 @@ def run_tree(args=None):
     log.create_log(log_loss, 'epoch', 'batch', 'loss', 'batch_train_acc')
 
     # Obtain the dataset and dataloaders
-    trainloader, projectloader, testloader, classes, num_channels = get_dataloaders(args)
+    trainloader, projectloader, testloader, classes, num_channels, validloader = get_dataloaders(args)
     # Create a convolutional network based on arguments and add 1x1 conv layer
     features_net, add_on_layers = get_network(num_channels, args)
     # Create a ProtoTree
@@ -62,6 +63,7 @@ def run_tree(args=None):
 
     leaf_labels = dict()
     best_train_acc = 0.
+    best_valid_acc = 0.
     best_test_acc = 0.
 
     if epoch < args.epochs + 1:
@@ -83,23 +85,29 @@ def run_tree(args=None):
             best_train_acc = save_best_train_tree(tree, optimizer, scheduler, best_train_acc, train_info['train_accuracy'], log)
             leaf_labels = analyse_leafs(tree, epoch, len(classes), leaf_labels, args.pruning_threshold_leaves, log)
             
-            # Evaluate tree
+            # Evaluate tree on the validation set (the test set is only used once, after training)
             if args.epochs>100:
                 if epoch%10==0 or epoch==args.epochs:
-                    eval_info = eval(tree, testloader, epoch, device, log)
-                    original_test_acc = eval_info['test_accuracy']
-                    best_test_acc = save_best_test_tree(tree, optimizer, scheduler, best_test_acc, eval_info['test_accuracy'], log)
+                    eval_info = eval(tree, validloader, epoch, device, log, split='Validation')
+                    best_valid_acc = save_best_valid_tree(tree, optimizer, scheduler, best_valid_acc, eval_info['test_accuracy'], log)
                     log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], train_info['train_accuracy'], train_info['loss'])
                 else:
                     log.log_values('log_epoch_overview', epoch, "n.a.", train_info['train_accuracy'], train_info['loss'])
             else:
-                eval_info = eval(tree, testloader, epoch, device, log)
-                original_test_acc = eval_info['test_accuracy']
-                best_test_acc = save_best_test_tree(tree, optimizer, scheduler, best_test_acc, eval_info['test_accuracy'], log)
+                eval_info = eval(tree, validloader, epoch, device, log, split='Validation')
+                best_valid_acc = save_best_valid_tree(tree, optimizer, scheduler, best_valid_acc, eval_info['test_accuracy'], log)
                 log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], train_info['train_accuracy'], train_info['loss'])
-            
+
             scheduler.step()
- 
+
+        # Continue with the tree that had the best validation accuracy instead of the last epoch's tree
+        best_valid_dir = f'{log.checkpoint_dir}/best_valid_model'
+        if os.path.isdir(best_valid_dir):
+            tree = ProtoTree.load(best_valid_dir).to(device=device)
+        eval_info = eval(tree, testloader, 'best_valid', device, log)
+        original_test_acc = eval_info['test_accuracy']
+        log.log_message("Training Finished. Best training accuracy was %s, best validation accuracy was %s, test accuracy of best-validation tree is %s\n"%(str(best_train_acc), str(best_valid_acc), str(original_test_acc)))
+
     else: #tree was loaded and not trained, so evaluate only
         '''
             EVALUATE TREE
@@ -108,11 +116,11 @@ def run_tree(args=None):
         original_test_acc = eval_info['test_accuracy']
         best_test_acc = save_best_test_tree(tree, optimizer, scheduler, best_test_acc, eval_info['test_accuracy'], log)
         log.log_values('log_epoch_overview', epoch, eval_info['test_accuracy'], "n.a.", "n.a.")
+        log.log_message("Evaluation Finished. Test accuracy was %s\n"%str(best_test_acc))
 
     '''
         EVALUATE AND ANALYSE TRAINED TREE
     '''
-    log.log_message("Training Finished. Best training accuracy was %s, best test accuracy was %s\n"%(str(best_train_acc), str(best_test_acc)))
     trained_tree = deepcopy(tree)
     leaf_labels = analyse_leafs(tree, epoch+1, len(classes), leaf_labels, args.pruning_threshold_leaves, log)
     analyse_leaf_distributions(tree, log)
